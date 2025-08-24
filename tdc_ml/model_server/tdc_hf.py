@@ -14,7 +14,7 @@ deeppurpose_repo = [
     'CYP3A4_Veith-AttentiveFP',
 ]
 
-model_hub = ["Geneformer", "scGPT", "scVI"]
+model_hub = ["Geneformer", "scGPT", "scVI", "VCGPT"]
 
 
 class tdc_hf_interface:
@@ -70,6 +70,10 @@ class tdc_hf_interface:
             from .models.scvi import scVI
             model = scVI()
             model.load()
+            return model
+        elif self.model_name == "VCGPT":
+            from .models.mmllm.module import InstructCell
+            model = InstructCell.from_pretrained("zjunlp/InstructCell-instruct")
             return model
         raise Exception("Not implemented yet!")
 

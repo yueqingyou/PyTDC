@@ -113,6 +113,21 @@ class TestModelServer(unittest.TestCase):
         output = model(adata)
         print(f"scVI ran successfully. here is an ouput: {output}")
 
+    def testVCGPT(self):
+        from tdc_ml.model_server import load_from_hf
+        vcgpt = load_from_hf("VCGPT")
+        model = vcgpt.load()
+        print(f"VCGPT ran successfully. Sanity check by printing model parameters:")
+        # Print the weights of the model
+        ctr = 0
+        for name, param in model.named_parameters():
+            print(f"Parameter name: {name}")
+            print(f"Parameter value: {param}")
+            if ctr == 10:
+                break
+            ctr += 1
+        
+
     def tearDown(self):
         try:
             print(os.getcwd())
