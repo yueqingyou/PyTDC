@@ -959,6 +959,8 @@ name2type = {
     "cellxgene_sample_small": "h5ad",
     "scgpt_vocab": "json",
     "scvi_test_dataset": "h5ad",
+    "vcgpt_sensitivity_demo": "h5ad",
+    "vcgpt_gene_vocab": "npy",
 }
 
 name2id = {
@@ -1168,6 +1170,8 @@ name2id = {
     "cellxgene_sample_small": 10806522,
     "scgpt_vocab": 10809431,
     "scvi_test_dataset": 10872157,
+    "vcgpt_sensitivity_demo": 12012482,
+    "vcgpt_gene_vocab": 12012483,
 }
 
 oracle2type = {

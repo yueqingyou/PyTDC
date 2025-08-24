@@ -277,17 +277,17 @@ def bm_download_wrapper(name, path):
 
 
 def pd_load(name, path):
-    """load a pandas dataframe from local file.
+    """load a pandas dataframe or numpy array from local file.
 
     Args:
         name (str): dataset name
         path (str): the path where the dataset is saved
 
     Returns:
-        pandas.DataFrame: loaded dataset in dataframe
+        pandas.DataFrame or numpy.ndarray: loaded dataset in dataframe or numpy array
 
     Raises:
-        ValueError: the file format is not supported. currently only support tab/csv/pkl/zip
+        ValueError: the file format is not supported. currently only support tab/csv/pkl/zip/npy
     """
     try:
         if name2type[name] == "tab":
@@ -310,7 +310,6 @@ def pd_load(name, path):
             print_sys("loader anndata object!")
             return adata
         elif name2type[name] == "json":
-            # df = pd.read_json(os.path.join(path, name + "." + name2type[name]))
             import json
             file_path = os.path.join(path, name + "." + name2type[name])
             with open(file_path, 'r') as f:
@@ -323,7 +322,6 @@ def pd_load(name, path):
                 r = maxlen - len(v)
                 file_content[k] = v + [None] * r
             df = pd.DataFrame(file_content)
-
         elif name2type[name] == "pth":
             import torch
             tensors = torch.load(
@@ -340,10 +338,15 @@ def pd_load(name, path):
                 df = pd.DataFrame(tensors.detach().numpy())
             else:
                 raise Exception("encountered non-tensor")
-
+        elif name2type[name] == "npy":
+            import numpy as np
+            print_sys("loading numpy array...")
+            np_array = np.load(os.path.join(path, name + "." + name2type[name]))
+            print_sys("loaded numpy array!")
+            return np_array
         else:
             raise ValueError(
-                "The file type must be one of tab/csv/xlsx/pickle/zip.")
+                "The file type must be one of tab/csv/xlsx/pickle/zip/npy.")
         try:
             df = df.drop_duplicates()
         except:
