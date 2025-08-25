@@ -125,8 +125,7 @@ class TestModelServer(unittest.TestCase):
                            "./data",
                            dataset_names=["vcgpt_sensitivity_demo"],
                            no_convert=True).adata
-        download_wrapper(
-            "vcgpt_gene_vocab", "./data", "vcgpt_gene_vocab")
+        download_wrapper("vcgpt_gene_vocab", "./data", "vcgpt_gene_vocab")
         gene_vocab = pd_load("vcgpt_gene_vocab", "./data")
         # process data
         from tdc_ml.model_server.model_loaders.instructcell import unify_gene_features
@@ -137,7 +136,7 @@ class TestModelServer(unittest.TestCase):
         )
         # inference
         # Select a random single-cell sample and extract its gene counts and metadata
-        k = np.random.randint(0, len(adata)) 
+        k = np.random.randint(0, len(adata))
         gene_counts = adata[k, :].X.toarray()
         sc_metadata = adata[k, :].obs.iloc[0].to_dict()
 
@@ -147,20 +146,18 @@ class TestModelServer(unittest.TestCase):
         )
 
         output = model.predict(
-            prompt, 
-            gene_counts=gene_counts, 
-            sc_metadata=sc_metadata, 
-            do_sample=True, 
+            prompt,
+            gene_counts=gene_counts,
+            sc_metadata=sc_metadata,
+            do_sample=True,
             top_p=0.95,
             top_k=50,
             max_new_tokens=256,
         )
         val = output["text"]
         assert val is not None and len(val) > 0, "VCGPT output is empty"
-        assert val in ["Sensitive", "Resistant", "Holiday"], f"VCGPT output is unexpected: {val}"
-
-        
-        
+        assert val in ["Sensitive", "Resistant",
+                       "Holiday"], f"VCGPT output is unexpected: {val}"
 
     def tearDown(self):
         try:

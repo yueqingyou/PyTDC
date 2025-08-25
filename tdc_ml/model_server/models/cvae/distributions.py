@@ -1,4 +1,4 @@
-import torch 
+import torch
 from torch.distributions import Distribution, Gamma, constraints
 import torch.nn.functional as F
 from torch.distributions import Poisson as PoissonTorch
@@ -9,10 +9,12 @@ from torch.distributions.utils import (
     logits_to_probs,
     probs_to_logits,
 )
-from typing import Tuple 
+from typing import Tuple
 import warnings
 
+
 class _Optional(Constraint):
+
     def __init__(self, constraint: Constraint):
         self.constraint = constraint
 
@@ -29,9 +31,10 @@ def optional_constraint(constraint: Constraint) -> Constraint:
     """Returns a wrapped constraint that allows optional values."""
     return _Optional(constraint)
 
+
 def _convert_counts_logits_to_mean_disp(
-    total_count: torch.Tensor, logits: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
+        total_count: torch.Tensor,
+        logits: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """NB parameterizations conversion.
 
     Parameters
@@ -50,6 +53,7 @@ def _convert_counts_logits_to_mean_disp(
     theta = total_count
     mu = logits.exp() * theta
     return mu, theta
+
 
 def log_nb_positive(
     x: torch.Tensor,
@@ -79,15 +83,12 @@ def log_nb_positive(
     log = log_fn
     lgamma = lgamma_fn
     log_theta_mu_eps = log(theta + mu + eps)
-    res = (
-        theta * (log(theta + eps) - log_theta_mu_eps)
-        + x * (log(mu + eps) - log_theta_mu_eps)
-        + lgamma(x + theta)
-        - lgamma(theta)
-        - lgamma(x + 1)
-    )
+    res = (theta * (log(theta + eps) - log_theta_mu_eps) + x *
+           (log(mu + eps) - log_theta_mu_eps) + lgamma(x + theta) -
+           lgamma(theta) - lgamma(x + 1))
 
     return res
+
 
 def _gamma(theta: torch.Tensor, mu: torch.Tensor) -> Gamma:
     concentration = theta
@@ -95,6 +96,7 @@ def _gamma(theta: torch.Tensor, mu: torch.Tensor) -> Gamma:
     # Important remark: Gamma is parametrized by the rate = 1/scale!
     gamma_d = Gamma(concentration=concentration, rate=rate)
     return gamma_d
+
 
 def log_zinb_positive(
     x: torch.Tensor,
@@ -125,7 +127,8 @@ def log_zinb_positive(
     # theta is the dispersion rate. If .ndimension() == 1, it is shared for all cells (regardless
     # of batch or labels)
     if theta.ndimension() == 1:
-        theta = theta.view(1, theta.size(0))  # In this case, we reshape theta for broadcasting
+        theta = theta.view(
+            1, theta.size(0))  # In this case, we reshape theta for broadcasting
 
     # Uses log(sigmoid(x)) = -softplus(-x)
     softplus_pi = F.softplus(-pi)
@@ -136,14 +139,10 @@ def log_zinb_positive(
     case_zero = F.softplus(pi_theta_log) - softplus_pi
     mul_case_zero = torch.mul((x < eps).type(torch.float32), case_zero)
 
-    case_non_zero = (
-        -softplus_pi
-        + pi_theta_log
-        + x * (torch.log(mu + eps) - log_theta_mu_eps)
-        + torch.lgamma(x + theta)
-        - torch.lgamma(theta)
-        - torch.lgamma(x + 1)
-    )
+    case_non_zero = (-softplus_pi + pi_theta_log + x *
+                     (torch.log(mu + eps) - log_theta_mu_eps) +
+                     torch.lgamma(x + theta) - torch.lgamma(theta) -
+                     torch.lgamma(x + 1))
     mul_case_non_zero = torch.mul((x > eps).type(torch.float32), case_non_zero)
 
     res = mul_case_zero + mul_case_non_zero
@@ -205,10 +204,10 @@ class NegativeBinomial(Distribution):
         if (mu is None) == (total_count is None):
             raise ValueError(
                 "Please use one of the two possible parameterizations. Refer to the documentation "
-                "for more information."
-            )
+                "for more information.")
 
-        using_param_1 = total_count is not None and (logits is not None or probs is not None)
+        using_param_1 = total_count is not None and (logits is not None or
+                                                     probs is not None)
         if using_param_1:
             logits = logits if logits is not None else probs_to_logits(probs)
             total_count = total_count.type_as(logits)
@@ -242,7 +241,8 @@ class NegativeBinomial(Distribution):
         # Clamping as distributions objects can have buggy behaviors when
         # their parameters are too high
         l_train = torch.clamp(p_means, max=1e8)
-        counts = PoissonTorch(l_train).sample()  # Shape : (n_samples, n_cells_batch, n_vars)
+        counts = PoissonTorch(
+            l_train).sample()  # Shape : (n_samples, n_cells_batch, n_vars)
         return counts
 
     def log_prob(self, value: torch.Tensor) -> torch.Tensor:
@@ -255,21 +255,24 @@ class NegativeBinomial(Distribution):
                     UserWarning,
                 )
 
-        return log_nb_positive(value, mu=self.mu, theta=self.theta, eps=self._eps)
+        return log_nb_positive(value,
+                               mu=self.mu,
+                               theta=self.theta,
+                               eps=self._eps)
 
     def _gamma(self) -> Gamma:
         return _gamma(self.theta, self.mu)
 
     def __repr__(self) -> str:
-        param_names = [k for k, _ in self.arg_constraints.items() if k in self.__dict__]
-        args_string = ", ".join(
-            [
-                f"{p}: "
-                f"{self.__dict__[p] if self.__dict__[p].numel() == 1 else self.__dict__[p].size()}"
-                for p in param_names
-                if self.__dict__[p] is not None
-            ]
-        )
+        param_names = [
+            k for k, _ in self.arg_constraints.items() if k in self.__dict__
+        ]
+        args_string = ", ".join([
+            f"{p}: "
+            f"{self.__dict__[p] if self.__dict__[p].numel() == 1 else self.__dict__[p].size()}"
+            for p in param_names
+            if self.__dict__[p] is not None
+        ])
         return self.__class__.__name__ + "(" + args_string + ")"
 
 
@@ -336,7 +339,8 @@ class ZeroInflatedNegativeBinomial(NegativeBinomial):
             scale=scale,
             validate_args=validate_args,
         )
-        self.zi_logits, self.mu, self.theta = broadcast_all(zi_logits, self.mu, self.theta)
+        self.zi_logits, self.mu, self.theta = broadcast_all(
+            zi_logits, self.mu, self.theta)
 
     @property
     def mean(self) -> torch.Tensor:
@@ -377,9 +381,13 @@ class ZeroInflatedNegativeBinomial(NegativeBinomial):
                 "The value argument must be within the support of the distribution",
                 UserWarning,
             )
-        return log_zinb_positive(value, self.mu, self.theta, self.zi_logits, eps=1e-08)
-    
-    
+        return log_zinb_positive(value,
+                                 self.mu,
+                                 self.theta,
+                                 self.zi_logits,
+                                 eps=1e-08)
+
+
 class Poisson(PoissonTorch):
     """Poisson distribution.
 
@@ -406,13 +414,13 @@ class Poisson(PoissonTorch):
         self.scale = scale
 
     def __repr__(self) -> str:
-        param_names = [k for k, _ in self.arg_constraints.items() if k in self.__dict__]
-        args_string = ", ".join(
-            [
-                f"{p}: "
-                f"{self.__dict__[p] if self.__dict__[p].numel() == 1 else self.__dict__[p].size()}"
-                for p in param_names
-                if self.__dict__[p] is not None
-            ]
-        )
+        param_names = [
+            k for k, _ in self.arg_constraints.items() if k in self.__dict__
+        ]
+        args_string = ", ".join([
+            f"{p}: "
+            f"{self.__dict__[p] if self.__dict__[p].numel() == 1 else self.__dict__[p].size()}"
+            for p in param_names
+            if self.__dict__[p] is not None
+        ])
         return self.__class__.__name__ + "(" + args_string + ")"

@@ -44,6 +44,7 @@ ACTIVATION_FAMILY = {
     "silu": F.silu,
 }
 
+
 def get_torch_activation(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
     """Get the torch activation function by name (e.g, ``get_torch_activation("gelu")``)."""
     func = ACTIVATION_FAMILY.get(name, None)
@@ -51,6 +52,7 @@ def get_torch_activation(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
         return func
 
     raise ValueError(f"Unknown activation function: {name}.")
+
 
 class ResidualBlock(nn.Module):
     """
@@ -74,6 +76,7 @@ class ResidualBlock(nn.Module):
         If True, the input will be added to the output (residual connection), assuming the
         input and output dimensions are the same. If False, no residual connection is used.
     """
+
     def __init__(
         self,
         n_inputs: int,
@@ -85,18 +88,19 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         if residual:
             assert n_inputs == n_outputs, "Residual connection requires the same input and output dimensions"
-        
+
         self.residual = residual
         self.linear = nn.Linear(n_inputs, n_outputs)
         self.activation = get_torch_activation(activation_func)
         self.dropout = nn.Dropout(dropout_rate)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Given the input ``x``, get the corresponding output of the residual block."""
         if self.residual:
             return x + self.dropout(self.activation(self.linear(x)))
         else:
             return self.dropout(self.activation(self.linear(x)))
+
 
 class SCQFormer(Blip2QFormerModel):
     """
@@ -121,6 +125,7 @@ class SCQFormer(Blip2QFormerModel):
     num_hidden_layers: int, default 2
         The number of ``ResidualBlock`` in the cell encoder.
     """
+
     def __init__(
         self,
         count_dim: int,
@@ -146,8 +151,7 @@ class SCQFormer(Blip2QFormerModel):
                         activation_func=hidden_act,
                         dropout_rate=hidden_dropout_prob,
                         residual=False,
-                    )
-                )
+                    ))
             elif i == num_hidden_layers - 1:
                 self.cell_encoder.append(
                     ResidualBlock(
@@ -156,8 +160,7 @@ class SCQFormer(Blip2QFormerModel):
                         activation_func=hidden_act,
                         dropout_rate=0.0,
                         residual=True,
-                    )
-                )
+                    ))
             else:
                 self.cell_encoder.append(
                     ResidualBlock(
@@ -166,25 +169,28 @@ class SCQFormer(Blip2QFormerModel):
                         activation_func=hidden_act,
                         dropout_rate=hidden_dropout_prob,
                         residual=True,
-                    )
-                )
+                    ))
         self.cell_encoder = nn.Sequential(*self.cell_encoder)
-        self.query_tokens = nn.Parameter(torch.zeros(1, num_query_tokens, config.hidden_size))
+        self.query_tokens = nn.Parameter(
+            torch.zeros(1, num_query_tokens, config.hidden_size))
 
         # initialize the weights of the model again
         self.init_weights()
         nn.init.normal_(self.query_tokens, std=config.initializer_range)
-    
+
     def forward(self, input_counts: torch.Tensor) -> torch.Tensor:
         """Encode the input cell counts and generate the final output."""
         encoder_hidden_states = self.cell_encoder(input_counts)
         batch_size = encoder_hidden_states.size(0)
-        encoder_hidden_states = torch.reshape(encoder_hidden_states, (batch_size, -1, self.config.hidden_size))
+        encoder_hidden_states = torch.reshape(
+            encoder_hidden_states, (batch_size, -1, self.config.hidden_size))
 
         query_tokens = self.query_tokens.expand(batch_size, -1, -1)
-        outputs = super().forward(query_tokens, encoder_hidden_states=encoder_hidden_states)[0]
+        outputs = super().forward(
+            query_tokens, encoder_hidden_states=encoder_hidden_states)[0]
 
         return outputs
+
 
 class Generator(nn.Module):
     """
@@ -205,19 +211,18 @@ class Generator(nn.Module):
     **kwargs: dict, optional
         Additional arguments passed to the base model, typically the ``scvi.module.CVAE`` model.
     """
-    def __init__(
-        self,
-        n_input: int,
-        condition_dim: int = 4096,
-        condition_input_dim: int = 128,
-        **kwargs
-    ) -> "Generator":
+
+    def __init__(self,
+                 n_input: int,
+                 condition_dim: int = 4096,
+                 condition_input_dim: int = 128,
+                 **kwargs) -> "Generator":
 
         super(Generator, self).__init__()
         self.mapping_layer = nn.Linear(condition_dim, condition_input_dim)
         kwargs["n_continuous_cov"] = condition_input_dim
         self.base_model = CVAE(n_input, **kwargs)
-    
+
     def forward(
         self,
         condition_embeds: torch.Tensor,
@@ -227,7 +232,8 @@ class Generator(nn.Module):
         labels: Optional[torch.Tensor] = None,
         loss_kwargs: Optional[Dict[str, Any]] = None,
         compute_loss: bool = True,
-    ) -> Union[Tuple[Dict[str, torch.Tensor | Distribution | None], Dict[str, Distribution | None]], LossOutput]:
+    ) -> Union[Tuple[Dict[str, torch.Tensor | Distribution | None], Dict[
+            str, Distribution | None]], LossOutput]:
         """
         Perform a forward pass through the generator.
 
@@ -261,10 +267,9 @@ class Generator(nn.Module):
         if condition_embeds.ndim > 2:
             condition_embeds = condition_embeds.squeeze(1)
         if batch_ids is None:
-            batch_ids = torch.zeros((gene_counts.shape[0], 1)).to(
-                dtype=torch.long,
-                device=gene_counts.device
-            )
+            batch_ids = torch.zeros(
+                (gene_counts.shape[0], 1)).to(dtype=torch.long,
+                                              device=gene_counts.device)
         inputs = {
             "gene_counts": gene_counts,
             "batch_ids": batch_ids,
@@ -274,7 +279,9 @@ class Generator(nn.Module):
         cont_covs = self.mapping_layer(condition_embeds)
         inputs["cont_covs"] = cont_covs
 
-        outputs = self.base_model(inputs, loss_kwargs=loss_kwargs, compute_loss=compute_loss)
+        outputs = self.base_model(inputs,
+                                  loss_kwargs=loss_kwargs,
+                                  compute_loss=compute_loss)
         if compute_loss:
             return outputs[-1]
 
@@ -322,31 +329,32 @@ class Generator(nn.Module):
         cont_covs = self.mapping_layer(condition_embeds)
         n_samples = condition_embeds.shape[0]
         if batch_ids is None:
-            batch_ids = torch.zeros((n_samples, 1)).to(
-                dtype=torch.long,
-                device=condition_embeds.device
-            )
+            batch_ids = torch.zeros(
+                (n_samples, 1)).to(dtype=torch.long,
+                                   device=condition_embeds.device)
         device = next(self.base_model.parameters()).device
 
         outputs = []
         for i in range(0, n_samples, batch_size):
             inputs = {}
-            cont_covs_batch = cont_covs[i: i + batch_size] if cont_covs is not None else None
-            batch_ids_batch = batch_ids[i: i + batch_size]
+            cont_covs_batch = cont_covs[
+                i:i + batch_size] if cont_covs is not None else None
+            batch_ids_batch = batch_ids[i:i + batch_size]
             # the prior distribution of latent vectors
             p_z = Normal(
-                torch.zeros((batch_ids_batch.size(0), self.base_model.n_latent)),
-                torch.ones((batch_ids_batch.size(0), self.base_model.n_latent))
-            )
+                torch.zeros(
+                    (batch_ids_batch.size(0), self.base_model.n_latent)),
+                torch.ones((batch_ids_batch.size(0), self.base_model.n_latent)))
             inputs = {
                 "z": p_z.sample(),
                 "batch_ids": batch_ids_batch,
                 "cont_covs": cont_covs_batch,
             }
             if library_size is not None:
-                inputs["library"] = library_size[i: i + batch_size]
+                inputs["library"] = library_size[i:i + batch_size]
             else:
-                p_library = self.base_model.get_prior_library_distribution(batch_ids_batch)
+                p_library = self.base_model.get_prior_library_distribution(
+                    batch_ids_batch)
                 assert p_library is not None, "The model does not have a prior distribution for library size, please provide it"
                 inputs["library"] = p_library.sample()
             inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -355,9 +363,11 @@ class Generator(nn.Module):
             if fake_samples.device.type == "cuda":
                 fake_samples = fake_samples.cpu()
             outputs.append(fake_samples)
-        outputs = torch.concat(outputs, dim=0) if len(outputs) > 1 else outputs[0]
-        
+        outputs = torch.concat(outputs,
+                               dim=0) if len(outputs) > 1 else outputs[0]
+
         return outputs if not to_numpy else outputs.numpy()
+
 
 class CellTextLLM(nn.Module):
     """
@@ -382,6 +392,7 @@ class CellTextLLM(nn.Module):
         both normalization and log transformation are enabled, the log transformation is applied after
         normalization.
     """
+
     def __init__(
         self,
         base_model: PreTrainedModel | nn.Module,
@@ -402,7 +413,7 @@ class CellTextLLM(nn.Module):
             self.feature_decoder = feature_decoder
         else:
             self.register_buffer("feature_decoder", None)
-        
+
         assert hasattr(self.base_model, "config"),  \
             "Base model must have a config attribute. " + \
             "Please use prepare_cell_text_llm to prepare the model."
@@ -425,7 +436,7 @@ class CellTextLLM(nn.Module):
                 assert hasattr(self.base_model.config, "num_signal_tokens"), \
                     "Base model config must have num_signal_tokens attribute. " + \
                     "Please use prepare_cell_text_llm to prepare the model."
-        
+
         self.normalize_total = normalize_total
         self.log_variational = log_variational
 
@@ -488,9 +499,12 @@ class CellTextLLM(nn.Module):
             features = features.unsqueeze(dim=1)
 
         num_features, num_feature_legnth, embed_dim = features.shape
-        placeholder_index = self.base_model.config.special_tokens_index_dict["placeholder"]
+        placeholder_index = self.base_model.config.special_tokens_index_dict[
+            "placeholder"]
         batch_size, sequence_length = input_ids.shape
-        left_padding = not torch.sum(input_ids[:, -1] == torch.tensor(self.base_model.config.pad_token_id))
+        left_padding = not torch.sum(
+            input_ids[:,
+                      -1] == torch.tensor(self.base_model.config.pad_token_id))
 
         # 1. create a mask to know where special placeholders are
         special_token_mask = input_ids == placeholder_index
@@ -499,8 +513,10 @@ class CellTextLLM(nn.Module):
         # compute the maximum embed dimension
         # if the size of feature is equal to 1, the sequence length after merging is the same
         # we just replace the placeholder with the corresponding features
-        max_embed_dim = (num_special_tokens.max() * (num_feature_legnth - 1)) + sequence_length
-        batch_indices, non_modality_indices = torch.where(input_ids != placeholder_index)
+        max_embed_dim = (num_special_tokens.max() *
+                         (num_feature_legnth - 1)) + sequence_length
+        batch_indices, non_modality_indices = torch.where(
+            input_ids != placeholder_index)
 
         # 2. compute the positions where text should be written
         # calculate new positions for text tokens in merged modality-text sequence
@@ -508,19 +524,24 @@ class CellTextLLM(nn.Module):
         # each placeholder will be replaced by `nb_text_tokens_per_feature` text tokens
         # `torch.cumsum` computes how each modality token shifts subsequent text token positions
         # - 1 to adjust for zero-based indexing, as `cumsum` inherently increases indices by one
-        new_token_positions = torch.cumsum((special_token_mask * (num_feature_legnth - 1) + 1), -1) - 1
+        new_token_positions = torch.cumsum(
+            (special_token_mask * (num_feature_legnth - 1) + 1), -1) - 1
         nb_pad = max_embed_dim - 1 - new_token_positions[:, -1]
         if left_padding:
             new_token_positions += nb_pad[:, None]  # offset for left padding
-        text_to_overwrite = new_token_positions[batch_indices, non_modality_indices]
+        text_to_overwrite = new_token_positions[batch_indices,
+                                                non_modality_indices]
 
         # 3. create the full embedding, already padded to the maximum position
-        final_embedding = torch.zeros(
-            batch_size, max_embed_dim, embed_dim, dtype=inputs_embeds.dtype, device=inputs_embeds.device
-        )
-        final_attention_mask = torch.zeros(
-            batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
-        )
+        final_embedding = torch.zeros(batch_size,
+                                      max_embed_dim,
+                                      embed_dim,
+                                      dtype=inputs_embeds.dtype,
+                                      device=inputs_embeds.device)
+        final_attention_mask = torch.zeros(batch_size,
+                                           max_embed_dim,
+                                           dtype=attention_mask.dtype,
+                                           device=inputs_embeds.device)
         if labels is not None and self.base_model.config.is_decoder:
             final_labels = torch.full(
                 (batch_size, max_embed_dim),
@@ -541,25 +562,33 @@ class CellTextLLM(nn.Module):
         # 4. fill the embeddings based on the mask
         # if we have ["hey" "<CELL>", "how", "are"]
         # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the cell features
-        final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_modality_indices]
-        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_modality_indices]
+        final_embedding[batch_indices,
+                        text_to_overwrite] = inputs_embeds[batch_indices,
+                                                           non_modality_indices]
+        final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[
+            batch_indices, non_modality_indices]
         if labels is not None and self.base_model.config.is_decoder:
-            final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_modality_indices]
-            
+            final_labels[batch_indices,
+                         text_to_overwrite] = labels[batch_indices,
+                                                     non_modality_indices]
+
         # 5. fill the embeddings corresponding to the modality. Anything that is still zeros needs filling
         # B * L
         modality_to_overwrite = torch.all(final_embedding == 0, dim=-1)
-        modality_to_overwrite &= modality_to_overwrite.cumsum(-1) - 1 >= nb_pad[:, None].to(target_device)
+        modality_to_overwrite &= modality_to_overwrite.cumsum(
+            -1) - 1 >= nb_pad[:, None].to(target_device)
         if modality_to_overwrite.sum() != features.shape[:-1].numel():
             raise ValueError(
                 f"The input provided to the model are wrong. The number of cell tokens is {torch.sum(special_token_mask)} while"
                 f" the number of cells given to the model is {num_features}. This prevents correct indexing and breaks batch generation."
             )
-        final_embedding[modality_to_overwrite] = features.contiguous().reshape(-1, embed_dim).to(target_device)
+        final_embedding[modality_to_overwrite] = features.contiguous().reshape(
+            -1, embed_dim).to(target_device)
         final_attention_mask |= modality_to_overwrite
-        
+
         # 6. mask out the embedding at padding positions, as we later use the past_key_value value to determine the non-attended tokens
-        batch_indices, pad_indices = torch.where(input_ids == self.base_model.config.pad_token_id)
+        batch_indices, pad_indices = torch.where(
+            input_ids == self.base_model.config.pad_token_id)
         indices_to_mask = new_token_positions[batch_indices, pad_indices]
         final_embedding[batch_indices, indices_to_mask] = 0
         if labels is None or self.base_model.config.is_encoder_decoder:
@@ -569,13 +598,13 @@ class CellTextLLM(nn.Module):
         labels = final_labels
         attention_mask = final_attention_mask
         inputs_embeds = final_embedding
-        
+
         return {
             "inputs_embeds": inputs_embeds,
             "attention_mask": attention_mask,
             "labels": labels,
         }
-    
+
     def _get_condition_embeds(
         self,
         last_hidden_states: torch.Tensor,
@@ -616,25 +645,30 @@ class CellTextLLM(nn.Module):
         """
         # get conditional embeddings
         num_signal_tokens = self.base_model.config.num_signal_tokens
-        first_signal_token_index = self.base_model.config.special_tokens_index_dict["first_signal_token"]
+        first_signal_token_index = self.base_model.config.special_tokens_index_dict[
+            "first_signal_token"]
         output_ids = input_ids
-        batch_indices, signal_token_indices = torch.where(output_ids == first_signal_token_index)
-        if output_counts is not None and len(batch_indices) != len(output_counts):
+        batch_indices, signal_token_indices = torch.where(
+            output_ids == first_signal_token_index)
+        if output_counts is not None and len(batch_indices) != len(
+                output_counts):
             raise ValueError(
                 f"The number of first signal tokens in inputs is {len(batch_indices)} "
                 f"but the number of output counts you provide is {len(output_counts)}. "
                 f"The row index of each signal token listed as follows:\n{batch_indices}"
             )
-        indexer = signal_token_indices[:, None] + torch.arange(num_signal_tokens)[None].to(
-            device=output_ids.device,
-            dtype=output_ids.dtype
-        )
-        target_ids = torch.arange(first_signal_token_index, first_signal_token_index + num_signal_tokens).to(
-            device=output_ids.device,
-            dtype=output_ids.dtype
-        )
-        if not torch.all(torch.gather(output_ids[batch_indices], 1, indexer) == target_ids[None]):
-            raise ValueError("The arrangement of signal tokens is not consecutive.")
+        indexer = signal_token_indices[:, None] + torch.arange(
+            num_signal_tokens)[None].to(device=output_ids.device,
+                                        dtype=output_ids.dtype)
+        target_ids = torch.arange(
+            first_signal_token_index, first_signal_token_index +
+            num_signal_tokens).to(device=output_ids.device,
+                                  dtype=output_ids.dtype)
+        if not torch.all(
+                torch.gather(output_ids[batch_indices], 1, indexer) ==
+                target_ids[None]):
+            raise ValueError(
+                "The arrangement of signal tokens is not consecutive.")
         batch_indices = batch_indices[:, None].expand_as(indexer)
         condition_embeds = last_hidden_states[batch_indices, indexer]
 
@@ -647,7 +681,8 @@ class CellTextLLM(nn.Module):
         input_counts: Optional[torch.Tensor] = None,
         return_conditions: bool = False,
         attention_mask: Optional[torch.Tensor] = None,
-        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
+        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor],
+                                                    List[int]]] = None,
         synced_gpus: Optional[bool] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
         streamer: Optional["BaseStreamer"] = None,
@@ -709,15 +744,19 @@ class CellTextLLM(nn.Module):
         # to the model's eos token id and the first signal token id
         eos_token_id = [self.base_model.config.eos_token_id]
         if self.feature_decoder is not None:
-            eos_token_id.append(self.base_model.config.special_tokens_index_dict["first_signal_token"])
+            eos_token_id.append(self.base_model.config.
+                                special_tokens_index_dict["first_signal_token"])
 
         if attention_mask is None:
-            attention_mask =  (input_ids != self.base_model.config.pad_token_id).to(input_ids.device)
+            attention_mask = (input_ids
+                              != self.base_model.config.pad_token_id).to(
+                                  input_ids.device)
             attention_mask = attention_mask.long()
         inputs_embeds = self.base_model.get_input_embeddings()(input_ids)
         if input_counts is not None:
             if self.normalize_total:
-                input_counts = input_counts / input_counts.sum(dim=-1, keepdim=True) * 1e4
+                input_counts = input_counts / input_counts.sum(
+                    dim=-1, keepdim=True) * 1e4
             if self.log_variational:
                 input_counts = torch.log1p(input_counts)
             assert self.feature_encoder is not None, "Feature encoder is not provided."
@@ -748,36 +787,35 @@ class CellTextLLM(nn.Module):
         if self.feature_decoder is not None:
             # start to generate the cell
             num_signal_tokens = self.base_model.config.num_signal_tokens
-            first_signal_token_index = self.base_model.config.special_tokens_index_dict["first_signal_token"]
+            first_signal_token_index = self.base_model.config.special_tokens_index_dict[
+                "first_signal_token"]
             batch_size, length = generated_ids.shape
             pad_token_id = self.base_model.config.pad_token_id
-            cell_indices, signal_token_indices = torch.where(generated_ids == first_signal_token_index)
+            cell_indices, signal_token_indices = torch.where(
+                generated_ids == first_signal_token_index)
             if len(cell_indices) > 0:
                 nb_pad = max(
-                    (signal_token_indices + num_signal_tokens - 1).max().item() - length + 1, 0
-                )
+                    (signal_token_indices + num_signal_tokens - 1).max().item()
+                    - length + 1, 0)
                 if nb_pad > 0:
-                    final_generated_ids = torch.concat(
-                        [
-                            generated_ids,
-                            torch.full((batch_size, nb_pad), pad_token_id).to(
-                                device=generated_ids.device,
-                                dtype=generated_ids.dtype
-                            )
-                        ],
-                        dim=1
-                    )
+                    final_generated_ids = torch.concat([
+                        generated_ids,
+                        torch.full((batch_size, nb_pad), pad_token_id).to(
+                            device=generated_ids.device,
+                            dtype=generated_ids.dtype)
+                    ],
+                                                       dim=1)
                 else:
                     # deep copy because we will modify the previous generated tokens to remove the signal tokens
                     final_generated_ids = generated_ids.clone()
                 # remove the signal tokens
                 generated_ids[cell_indices, signal_token_indices] = pad_token_id
                 shift = torch.arange(num_signal_tokens).to(
-                    device=generated_ids.device,
-                    dtype=generated_ids.dtype
-                )
+                    device=generated_ids.device, dtype=generated_ids.dtype)
                 indexer = signal_token_indices[:, None] + shift[None]
-                final_generated_ids[cell_indices[:, None].expand_as(indexer), indexer] = shift[None] + first_signal_token_index
+                final_generated_ids[
+                    cell_indices[:, None].expand_as(indexer),
+                    indexer] = shift[None] + first_signal_token_index
 
                 # after the all signal tokens are added, we get the corresponding hidden states
                 if self.base_model.config.is_encoder_decoder:
@@ -788,55 +826,63 @@ class CellTextLLM(nn.Module):
                         return_dict=True,
                         output_hidden_states=True,
                     ).decoder_hidden_states[-1]
-                    condition_embeds = self._get_condition_embeds(last_hidden_states, decoder_input_ids)
+                    condition_embeds = self._get_condition_embeds(
+                        last_hidden_states, decoder_input_ids)
                 elif self.base_model.config.is_decoder:
                     # unlike encoder-decoder architecture, the original input_ids are concatenated with the generated_ids
                     # note that we should consider padding tokens in the original input_ids
                     input_length = input_ids.size(-1)
                     new_input_ids = input_ids.clone()
-                    num_normal_tokens = torch.sum(input_ids[cell_indices] != pad_token_id, dim=-1).to(dtype=torch.long)
+                    num_normal_tokens = torch.sum(input_ids[cell_indices]
+                                                  != pad_token_id,
+                                                  dim=-1).to(dtype=torch.long)
                     max_num_normal_tokens = num_normal_tokens.max()
-                    max_num_generated_tokens = (signal_token_indices.max() + num_signal_tokens)
+                    max_num_generated_tokens = (signal_token_indices.max() +
+                                                num_signal_tokens)
                     # note that real nb_pad may be less than the calculated nb_pad
                     # because for an input with maximum length, its generated tokens may not be long enough to reach the maximum length
                     # in this case, we do it for the convenience of parallel computing
                     # we will remove the redundant padding tokens later
-                    nb_pad = max_num_normal_tokens.item() + max_num_generated_tokens.item() - input_length
+                    nb_pad = max_num_normal_tokens.item(
+                    ) + max_num_generated_tokens.item() - input_length
                     if nb_pad > 0:
-                        new_input_ids = torch.concat(
-                            [
-                                new_input_ids,
-                                torch.full((batch_size, nb_pad), pad_token_id).to(
-                                    device=new_input_ids.device,
-                                    dtype=new_input_ids.dtype
-                                )
-                            ],
-                            dim=1
-                        )
+                        new_input_ids = torch.concat([
+                            new_input_ids,
+                            torch.full((batch_size, nb_pad), pad_token_id).to(
+                                device=new_input_ids.device,
+                                dtype=new_input_ids.dtype)
+                        ],
+                                                     dim=1)
                     shift = torch.arange(0, max_num_generated_tokens.item()).to(
-                        device=num_normal_tokens.device,
-                        dtype=torch.long
-                    )
+                        device=num_normal_tokens.device, dtype=torch.long)
                     src_col_indexer = num_normal_tokens[:, None] + shift[None]
                     # concatenate the original input_ids with the generated_ids including the signal tokens
-                    new_input_ids[cell_indices[:, None].expand_as(src_col_indexer), src_col_indexer] = final_generated_ids[cell_indices][0: max_num_generated_tokens.item()]
+                    new_input_ids[
+                        cell_indices[:, None].expand_as(src_col_indexer),
+                        src_col_indexer] = final_generated_ids[cell_indices][
+                            0:max_num_generated_tokens.item()]
                     # remove the redundant padding tokens
-                    new_input_ids = new_input_ids[:, torch.any(new_input_ids != pad_token_id, dim=0)]
-                    new_inputs_embeds = self.base_model.get_input_embeddings()(new_input_ids)
+                    new_input_ids = new_input_ids[:,
+                                                  torch.any(new_input_ids !=
+                                                            pad_token_id,
+                                                            dim=0)]
+                    new_inputs_embeds = self.base_model.get_input_embeddings()(
+                        new_input_ids)
                     last_hidden_states = self.base_model(
                         inputs_embeds=new_inputs_embeds,
                         return_dict=True,
                         output_hidden_states=True,
                     ).hidden_states[-1]
-                    condition_embeds = self._get_condition_embeds(last_hidden_states, new_input_ids)
+                    condition_embeds = self._get_condition_embeds(
+                        last_hidden_states, new_input_ids)
                 else:
-                    raise ValueError("The model must be either encoder-decoder or decoder-only architecture.")
-            
+                    raise ValueError(
+                        "The model must be either encoder-decoder or decoder-only architecture."
+                    )
+
                 # use downstream model to generate the cell
-                cells = self.feature_decoder.generate(
-                    condition_embeds,
-                    to_numpy=True
-                )
+                cells = self.feature_decoder.generate(condition_embeds,
+                                                      to_numpy=True)
                 for cell_indice, cell in zip(cell_indices, cells):
                     outputs["cells"][cell_indice] = cell
                 if return_conditions:
@@ -844,27 +890,27 @@ class CellTextLLM(nn.Module):
                     if condition_embeds_.device.type == "cuda":
                         condition_embeds_ = condition_embeds_.cpu()
                     condition_embeds_ = condition_embeds_.numpy()
-                    for cell_indice, condition in zip(cell_indices, condition_embeds_):
+                    for cell_indice, condition in zip(cell_indices,
+                                                      condition_embeds_):
                         outputs["conditions"][cell_indice] = condition
 
         if generated_ids.device.type == "cuda":
             generated_ids = generated_ids.cpu()
-        outputs["texts"] = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        outputs["texts"] = self.tokenizer.batch_decode(generated_ids,
+                                                       skip_special_tokens=True)
 
         return outputs
-    
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        input_counts: Optional[torch.Tensor] = None,
-        output_counts: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        generative_model_kwargs: Optional[Dict[str, Any]] = None,
-        **base_model_kwargs
-    ) -> Seq2SeqLMOutput | CausalLMOutput:
+
+    def forward(self,
+                input_ids: torch.Tensor,
+                attention_mask: Optional[torch.Tensor] = None,
+                input_counts: Optional[torch.Tensor] = None,
+                output_counts: Optional[torch.Tensor] = None,
+                labels: Optional[torch.Tensor] = None,
+                output_attentions: Optional[bool] = None,
+                output_hidden_states: Optional[bool] = None,
+                generative_model_kwargs: Optional[Dict[str, Any]] = None,
+                **base_model_kwargs) -> Seq2SeqLMOutput | CausalLMOutput:
         """
         Perform a forward pass for the CellTextLLM model, integrating cell feature generation
         and text generation in a multimodal setup.
@@ -901,11 +947,14 @@ class CellTextLLM(nn.Module):
         inputs_embeds = self.base_model.get_input_embeddings()(input_ids)
         if input_counts is not None:
             if self.normalize_total:
-                input_counts = input_counts / input_counts.sum(dim=-1, keepdim=True) * 1e4
+                input_counts = input_counts / input_counts.sum(
+                    dim=-1, keepdim=True) * 1e4
             if self.log_variational:
                 input_counts = torch.log1p(input_counts)
         if attention_mask is None:
-            attention_mask =  (input_ids != self.base_model.config.pad_token_id).to(input_ids.device)
+            attention_mask = (input_ids
+                              != self.base_model.config.pad_token_id).to(
+                                  input_ids.device)
             attention_mask = attention_mask.long()
 
         # get cell modality's features
@@ -955,8 +1004,7 @@ class CellTextLLM(nn.Module):
             if "decoder_input_ids" not in base_model_kwargs:
                 raise ValueError(
                     "decoder_input_ids must be provided in base_model_kwargs when the encoder-decoder model "
-                    " is used to generate cells."
-                )
+                    " is used to generate cells.")
             last_hidden_states = outputs.decoder_hidden_states[-1]
             input_ids_ = base_model_kwargs["decoder_input_ids"]
         else:
@@ -969,17 +1017,16 @@ class CellTextLLM(nn.Module):
         )
         if generative_model_kwargs is None:
             generative_model_kwargs = {}
-        generative_outputs = self.feature_decoder(
-            condition_embeds,
-            output_counts,
-            **generative_model_kwargs
-        )
+        generative_outputs = self.feature_decoder(condition_embeds,
+                                                  output_counts,
+                                                  **generative_model_kwargs)
         batch_size = input_ids.shape[0]
         num_generative_samples = output_counts.shape[0]
         outputs.loss = outputs.loss + generative_outputs.loss * num_generative_samples / batch_size
-        
+
         return outputs
-    
+
+
 class InstructCellConfig(PretrainedConfig):
     """
     A configuration class for the ``InstructCell`` model, which integrates a base language model
@@ -1063,19 +1110,20 @@ class InstructCellConfig(PretrainedConfig):
     ) -> "InstructCellConfig":
         # initialize the configuration of base language model
         if isinstance(base_model_config, dict):
-            base_model_config["model_type"] = (
-                base_model_config["model_type"] if "model_type" in base_model_config else "t5"
-            )
-            base_model_config = CONFIG_MAPPING[base_model_config["model_type"]](**base_model_config)
+            base_model_config["model_type"] = (base_model_config["model_type"]
+                                               if "model_type"
+                                               in base_model_config else "t5")
+            base_model_config = CONFIG_MAPPING[base_model_config["model_type"]](
+                **base_model_config)
         elif base_model_config is None:
             base_model_config = CONFIG_MAPPING["t5"]()
         self.base_model_config = base_model_config
         for attr_names in [
-            "special_tokens_index_dict",
-            "pad_token_id",
-            "eos_token_id",
-            "ignore_index",
-            "num_signal_tokens",
+                "special_tokens_index_dict",
+                "pad_token_id",
+                "eos_token_id",
+                "ignore_index",
+                "num_signal_tokens",
         ]:
             if not hasattr(self.base_model_config, attr_names):
                 self.base_model_config.__setattr__(attr_names, None)
@@ -1094,6 +1142,7 @@ class InstructCellConfig(PretrainedConfig):
         self.log_variational = log_variational
 
         super().__init__(**kwargs)
+
 
 class InstructCell(PreTrainedModel):
     """
@@ -1139,14 +1188,18 @@ class InstructCell(PreTrainedModel):
 
         # load the Q-former module
         count_dim = config.feature_encoder_config["count_dim"]
-        is_q_former_encoder = config.feature_encoder_config["is_q_former_encoder"]
+        is_q_former_encoder = config.feature_encoder_config[
+            "is_q_former_encoder"]
         if is_q_former_encoder:
-            cross_attention_frequency = config.feature_encoder_config["cross_attention_frequency"]
-            num_hidden_layers = config.feature_encoder_config["num_hidden_layers"]
+            cross_attention_frequency = config.feature_encoder_config[
+                "cross_attention_frequency"]
+            num_hidden_layers = config.feature_encoder_config[
+                "num_hidden_layers"]
             qformer_config = Blip2QFormerConfig(
                 vocab_size=0,
                 hidden_size=model.config.hidden_size,
-                hidden_dropout_prob=config.feature_encoder_config["hidden_dropout_prob"],
+                hidden_dropout_prob=config.
+                feature_encoder_config["hidden_dropout_prob"],
                 num_hidden_layers=num_hidden_layers,
                 num_attention_heads=model.config.num_attention_heads,
                 intermediate_size=model.config.hidden_size * 4,
@@ -1154,7 +1207,8 @@ class InstructCell(PreTrainedModel):
                 cross_attention_frequency=cross_attention_frequency,
                 encoder_hidden_size=model.config.hidden_size,
             )
-            num_key_value_tokens = config.feature_encoder_config["num_key_value_tokens"]
+            num_key_value_tokens = config.feature_encoder_config[
+                "num_key_value_tokens"]
             num_blocks = config.feature_encoder_config["num_blocks"]
             num_query_tokens = config.feature_encoder_config["num_query_tokens"]
             feature_encoder = SCQFormer(
@@ -1166,14 +1220,18 @@ class InstructCell(PreTrainedModel):
             )
         else:
             feature_encoder = nn.Sequential(
-                nn.Linear(count_dim, (count_dim + model.config.hidden_size) // 2),
+                nn.Linear(count_dim,
+                          (count_dim + model.config.hidden_size) // 2),
                 nn.GELU(),
-                nn.Linear((count_dim + model.config.hidden_size) // 2, model.config.hidden_size),
-                nn.Dropout(config.feature_encoder_config["hidden_dropout_prob"]),
+                nn.Linear((count_dim + model.config.hidden_size) // 2,
+                          model.config.hidden_size),
+                nn.Dropout(
+                    config.feature_encoder_config["hidden_dropout_prob"]),
             )
-        
+
         # load the cell reconstruction module
-        condition_input_dim = config.feature_decoder_config["condition_input_dim"]
+        condition_input_dim = config.feature_decoder_config[
+            "condition_input_dim"]
         use_layer_norm = config.feature_decoder_config["use_layer_norm"]
         use_batch_norm = config.feature_decoder_config["use_batch_norm"]
         n_latent = config.feature_decoder_config["n_latent"]
@@ -1184,7 +1242,8 @@ class InstructCell(PreTrainedModel):
         adaptive_library = config.feature_decoder_config["adaptive_library"]
         # create a dummy matrix to initialize library size
         dummy_counts_for_init = np.random.randint(0, 1000, (10, count_dim))
-        library_log_means, library_log_vars = init_library_size(dummy_counts_for_init)
+        library_log_means, library_log_vars = init_library_size(
+            dummy_counts_for_init)
         feature_decoder = Generator(
             count_dim,
             condition_dim=model.config.hidden_size,
@@ -1214,18 +1273,18 @@ class InstructCell(PreTrainedModel):
             normalize_total=config.normalize_total,
             log_variational=config.log_variational,
         )
-    
+
     def _check_tokenizer(self) -> None:
         """Check whether the tokenizer is set."""
         if self.assistant.tokenizer is None:
-            raise ValueError("The tokenizer has not been set. Please configure the tokenizer first.")
-    
-    def save_pretrained(
-        self,
-        save_directory: Optional[str],
-        save_tokenizer_kwargs: Dict[str, Any] = {},
-        **kwargs
-    ) -> None:
+            raise ValueError(
+                "The tokenizer has not been set. Please configure the tokenizer first."
+            )
+
+    def save_pretrained(self,
+                        save_directory: Optional[str],
+                        save_tokenizer_kwargs: Dict[str, Any] = {},
+                        **kwargs) -> None:
         """
         Save the ``InstructCell`` model and its tokenizer to a directory, so that it can be
         reloaded using the ``from_pretrained`` method.
@@ -1241,16 +1300,15 @@ class InstructCell(PreTrainedModel):
             class (``transformers.PreTrainedModel``).
         """
         self._check_tokenizer()
-        self.assistant.tokenizer.save_pretrained(save_directory, **save_tokenizer_kwargs)
+        self.assistant.tokenizer.save_pretrained(save_directory,
+                                                 **save_tokenizer_kwargs)
         super().save_pretrained(save_directory, **kwargs)
-    
+
     @classmethod
-    def from_pretrained(
-        cls,
-        pretrained_model_name_or_path: Optional[str],
-        load_tokenizer_kwargs: Dict[str, Any] = {},
-        **kwargs
-    ) -> "InstructCell":
+    def from_pretrained(cls,
+                        pretrained_model_name_or_path: Optional[str],
+                        load_tokenizer_kwargs: Dict[str, Any] = {},
+                        **kwargs) -> "InstructCell":
         """
         Load a pre-trained ``InstructCell`` model from a local directory or remote model hub.
 
@@ -1281,17 +1339,14 @@ class InstructCell(PreTrainedModel):
         }
         # load the corresponding tokenizer
         model.assistant.tokenizer = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path,
-            **load_tokenizer_kwargs
-        )
+            pretrained_model_name_or_path, **load_tokenizer_kwargs)
         return model
-    
+
     def initialize_special_tokens(
-        self,
-        modality_tag: str = "CELL",
-        num_signal_tokens: int = 1,
-        pad_to_multiple_of: Optional[int] = 8
-    ) -> None:
+            self,
+            modality_tag: str = "CELL",
+            num_signal_tokens: int = 1,
+            pad_to_multiple_of: Optional[int] = 8) -> None:
         """
         Initialize and register special tokens for cell-language modeling, such as placeholder
         tokens and signal tokens for inserting or extracting cell embeddings.
@@ -1314,8 +1369,10 @@ class InstructCell(PreTrainedModel):
         # ensure the tokenizer has a pad token
         if self.assistant.tokenizer.pad_token_id is None:
             self.assistant.tokenizer.pad_token = self.assistant.tokenizer.eos_token
-        ignore_index = -100 if not hasattr(self.assistant.base_model.config, "ignore_index") else None
-        pad_token_id = self.assistant.tokenizer.pad_token_id if not hasattr(self.assistant.base_model.config, "pad_token_id") else None
+        ignore_index = -100 if not hasattr(self.assistant.base_model.config,
+                                           "ignore_index") else None
+        pad_token_id = self.assistant.tokenizer.pad_token_id if not hasattr(
+            self.assistant.base_model.config, "pad_token_id") else None
 
         # prepare the model for cell-language modelling
         prepare_cell_text_llm(
@@ -1375,11 +1432,13 @@ class InstructCell(PreTrainedModel):
 
         if gene_counts is not None and len(gene_counts.shape) == 1:
             gene_counts = gene_counts.reshape(1, -1)
-        
-        placeholder = self.config.base_model_config.special_tokens_dict["placeholder"]
-        start_tag = self.config.base_model_config.special_tokens_dict["start_tag"]
+
+        placeholder = self.config.base_model_config.special_tokens_dict[
+            "placeholder"]
+        start_tag = self.config.base_model_config.special_tokens_dict[
+            "start_tag"]
         end_tag = self.config.base_model_config.special_tokens_dict["end_tag"]
-        
+
         # users can define the value of key `input` in `sc_metadata` by themselves
         sc_metadata = {
             "input": f"{start_tag}{placeholder}{end_tag}",
@@ -1388,7 +1447,8 @@ class InstructCell(PreTrainedModel):
         prompt = prompt.format(**sc_metadata)
         prompt = f"User:\n{prompt}\n\nAssistant:\n"
 
-        input_ids = self.assistant.tokenizer(prompt, return_tensors="np").input_ids
+        input_ids = self.assistant.tokenizer(prompt,
+                                             return_tensors="np").input_ids
         inputs = {"input_ids": torch.from_numpy(input_ids)}
         if gene_counts is not None:
             inputs["input_counts"] = torch.from_numpy(gene_counts)
@@ -1399,21 +1459,19 @@ class InstructCell(PreTrainedModel):
                 inputs[key] = value.to(device=self.assistant.base_model.device)
         if inputs["input_counts"] is not None:
             inputs["input_counts"] = inputs["input_counts"].to(dtype=self.dtype)
-        
+
         return inputs
 
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        input_counts: Optional[torch.Tensor] = None,
-        output_counts: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        generative_model_kwargs: Optional[Dict[str, Any]] = None,
-        **base_model_kwargs
-    ) -> Seq2SeqLMOutput | CausalLMOutput:
+    def forward(self,
+                input_ids: torch.Tensor,
+                attention_mask: Optional[torch.Tensor] = None,
+                input_counts: Optional[torch.Tensor] = None,
+                output_counts: Optional[torch.Tensor] = None,
+                labels: Optional[torch.Tensor] = None,
+                output_attentions: Optional[bool] = None,
+                output_hidden_states: Optional[bool] = None,
+                generative_model_kwargs: Optional[Dict[str, Any]] = None,
+                **base_model_kwargs) -> Seq2SeqLMOutput | CausalLMOutput:
         """
         Perform a forward pass for the CellTextLLM model, integrating cell feature generation
         and text generation in a multimodal setup.
@@ -1448,23 +1506,24 @@ class InstructCell(PreTrainedModel):
         """
         return self.assistant(
             input_ids,
-            attention_mask = attention_mask,
-            input_counts = input_counts,
-            output_counts = output_counts,
-            labels = labels,
-            output_attentions = output_attentions,
-            output_hidden_states = output_hidden_states,
-            generative_model_kwargs = generative_model_kwargs,
+            attention_mask=attention_mask,
+            input_counts=input_counts,
+            output_counts=output_counts,
+            labels=labels,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            generative_model_kwargs=generative_model_kwargs,
             **base_model_kwargs,
         )
-    
+
     def generate(
         self,
         input_ids: torch.Tensor,
         input_counts: Optional[torch.Tensor] = None,
         return_conditions: bool = False,
         attention_mask: Optional[torch.Tensor] = None,
-        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], List[int]]] = None,
+        prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor],
+                                                    List[int]]] = None,
         synced_gpus: Optional[bool] = None,
         assistant_model: Optional["PreTrainedModel"] = None,
         streamer: Optional["BaseStreamer"] = None,
@@ -1534,13 +1593,11 @@ class InstructCell(PreTrainedModel):
             **kwargs,
         )
 
-    def predict(
-        self,
-        prompt: str,
-        gene_counts: Optional[np.ndarray] = None,
-        sc_metadata: Dict[str, str] = {},
-        **kwargs
-    ) -> Dict[str, str | np.ndarray]:
+    def predict(self,
+                prompt: str,
+                gene_counts: Optional[np.ndarray] = None,
+                sc_metadata: Dict[str, str] = {},
+                **kwargs) -> Dict[str, str | np.ndarray]:
         """
         A high-level helper method for inference, combining text prompt processing and generation
         in a single call.
@@ -1576,17 +1633,10 @@ class InstructCell(PreTrainedModel):
           has cell data (counts) and a text prompt, and wants a single call to retrieve both
           text and cell outputs.
         """
-        inputs = self.prepare_model_inputs(
-            prompt,
-            gene_counts=gene_counts,
-            sc_metadata=sc_metadata
-        )
-        outputs = self.generate(
-            inputs["input_ids"],
-            input_counts=inputs["input_counts"],
-            **kwargs
-        )
-        return {
-            "text": outputs["texts"][0],
-            "cell": outputs["cells"][0]
-        }
+        inputs = self.prepare_model_inputs(prompt,
+                                           gene_counts=gene_counts,
+                                           sc_metadata=sc_metadata)
+        outputs = self.generate(inputs["input_ids"],
+                                input_counts=inputs["input_counts"],
+                                **kwargs)
+        return {"text": outputs["texts"][0], "cell": outputs["cells"][0]}

@@ -1,17 +1,18 @@
 import torch
 from torch.nn import ModuleDict
 from .nn import Embedding
-import torch.nn as nn 
+import torch.nn as nn
 from typing import (
-    Dict, 
-    Tuple, 
-    Union, 
+    Dict,
+    Tuple,
+    Union,
 )
 from abc import abstractmethod
 from collections.abc import Iterable
 from dataclasses import field, dataclass
 
 LossRecord = Union[Dict[str, torch.Tensor], torch.Tensor]
+
 
 @dataclass
 class LossOutput:
@@ -77,7 +78,8 @@ class LossOutput:
         object.__setattr__(self, "loss", self.dict_sum(self.loss))
 
         if self.n_obs_minibatch is None and self.reconstruction_loss is None:
-            raise ValueError("Must provide either n_obs_minibatch or reconstruction_loss")
+            raise ValueError(
+                "Must provide either n_obs_minibatch or reconstruction_loss")
 
         default = 0 * self.loss
         if self.reconstruction_loss is None:
@@ -87,7 +89,8 @@ class LossOutput:
         if self.kl_global is None:
             object.__setattr__(self, "kl_global", default)
 
-        object.__setattr__(self, "reconstruction_loss", self._as_dict("reconstruction_loss"))
+        object.__setattr__(self, "reconstruction_loss",
+                           self._as_dict("reconstruction_loss"))
         object.__setattr__(self, "kl_local", self._as_dict("kl_local"))
         object.__setattr__(self, "kl_global", self._as_dict("kl_global"))
         object.__setattr__(
@@ -95,19 +98,20 @@ class LossOutput:
             "reconstruction_loss_sum",
             self.dict_sum(self.reconstruction_loss).sum(),
         )
-        object.__setattr__(self, "kl_local_sum", self.dict_sum(self.kl_local).sum())
+        object.__setattr__(self, "kl_local_sum",
+                           self.dict_sum(self.kl_local).sum())
         object.__setattr__(self, "kl_global_sum", self.dict_sum(self.kl_global))
 
         if self.reconstruction_loss is not None and self.n_obs_minibatch is None:
             rec_loss = self.reconstruction_loss
-            object.__setattr__(self, "n_obs_minibatch", list(rec_loss.values())[0].shape[0])
+            object.__setattr__(self, "n_obs_minibatch",
+                               list(rec_loss.values())[0].shape[0])
 
-        if self.classification_loss is not None and (
-            self.logits is None or self.true_labels is None
-        ):
+        if self.classification_loss is not None and (self.logits is None or
+                                                     self.true_labels is None):
             raise ValueError(
-                "Must provide `logits` and `true_labels` if `classification_loss` is " "provided."
-            )
+                "Must provide `logits` and `true_labels` if `classification_loss` is "
+                "provided.")
 
     @staticmethod
     def dict_sum(dictionary: Dict[str, torch.Tensor] | torch.Tensor):
@@ -129,10 +133,12 @@ class LossOutput:
         else:
             return {attr_name: attr}
 
+
 def _get_dict_if_none(param):
     param = {} if not isinstance(param, dict) else param
 
     return param
+
 
 def _generic_forward(
     module,
@@ -151,14 +157,16 @@ def _generic_forward(
     get_inference_input_kwargs = _get_dict_if_none(get_inference_input_kwargs)
     get_generative_input_kwargs = _get_dict_if_none(get_generative_input_kwargs)
 
-    inference_inputs = module._get_inference_input(tensors, **get_inference_input_kwargs)
+    inference_inputs = module._get_inference_input(tensors,
+                                                   **get_inference_input_kwargs)
     inference_outputs = module.inference(**inference_inputs, **inference_kwargs)
     generative_inputs = module._get_generative_input(
-        tensors, inference_outputs, **get_generative_input_kwargs
-    )
-    generative_outputs = module.generative(**generative_inputs, **generative_kwargs)
+        tensors, inference_outputs, **get_generative_input_kwargs)
+    generative_outputs = module.generative(**generative_inputs,
+                                           **generative_kwargs)
     if compute_loss:
-        losses = module.loss(tensors, inference_outputs, generative_outputs, **loss_kwargs)
+        losses = module.loss(tensors, inference_outputs, generative_outputs,
+                             **loss_kwargs)
         return inference_outputs, generative_outputs, losses
     else:
         return inference_outputs, generative_outputs
@@ -179,7 +187,10 @@ class EmbeddingModuleMixin:
             self._embeddings_dict = ModuleDict()
         return self._embeddings_dict
 
-    def add_embedding(self, key: str, embedding: Embedding, overwrite: bool = False) -> None:
+    def add_embedding(self,
+                      key: str,
+                      embedding: Embedding,
+                      overwrite: bool = False) -> None:
         """Add an embedding to the module."""
         if key in self.embeddings_dict and not overwrite:
             raise KeyError(f"Embedding {key} already exists.")
@@ -205,9 +216,11 @@ class EmbeddingModuleMixin:
         **kwargs,
     ) -> None:
         """Initialize an embedding in the module."""
-        self.add_embedding(key, Embedding(num_embeddings, embedding_dim, **kwargs))
+        self.add_embedding(key,
+                           Embedding(num_embeddings, embedding_dim, **kwargs))
 
-    def compute_embedding(self, key: str, indices: torch.Tensor) -> torch.Tensor:
+    def compute_embedding(self, key: str,
+                          indices: torch.Tensor) -> torch.Tensor:
         """Forward pass for an embedding."""
         indices = indices.flatten() if indices.ndim > 1 else indices
         return self.get_embedding(key)(indices)
@@ -223,9 +236,7 @@ class BaseModuleClass(nn.Module):
     1. :doc:`/tutorials/notebooks/dev/module_user_guide`
     """
 
-    def __init__(
-        self,
-    ):
+    def __init__(self,):
         super().__init__()
 
     @property
@@ -247,7 +258,8 @@ class BaseModuleClass(nn.Module):
         generative_kwargs: dict | None = None,
         loss_kwargs: dict | None = None,
         compute_loss=True,
-    ) -> Tuple[torch.Tensor, torch.Tensor] | Tuple[torch.Tensor, torch.Tensor, LossOutput]:
+    ) -> Tuple[torch.Tensor, torch.Tensor] | Tuple[torch.Tensor, torch.Tensor,
+                                                   LossOutput]:
         """Forward pass through the network.
 
         Parameters
@@ -309,7 +321,7 @@ class BaseModuleClass(nn.Module):
 
     @abstractmethod
     def generative(
-        self, *args, **kwargs
+            self, *args, **kwargs
     ) -> Dict[str, torch.Tensor | torch.distributions.Distribution]:
         """Run the generative model.
 

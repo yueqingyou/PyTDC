@@ -1,20 +1,23 @@
-import torch 
-import torch.nn as nn 
+import torch
+import torch.nn as nn
 from typing import (
-    Literal, 
-    Iterable, 
-    Optional, 
-    Callable, 
-    List, 
-    Dict, 
+    Literal,
+    Iterable,
+    Optional,
+    Callable,
+    List,
+    Dict,
 )
 import collections
 from torch.distributions import Normal
 
+
 def _identity(x):
     return x
 
-def _partial_freeze_hook_factory(freeze: int) -> Callable[[torch.Tensor], torch.Tensor]:
+
+def _partial_freeze_hook_factory(
+        freeze: int) -> Callable[[torch.Tensor], torch.Tensor]:
     """Factory for a hook that freezes the first ``freeze`` entries in the gradient.
 
     Parameters
@@ -29,6 +32,7 @@ def _partial_freeze_hook_factory(freeze: int) -> Callable[[torch.Tensor], torch.
         return grad
 
     return _partial_freeze_hook
+
 
 class FCLayers(nn.Module):
     """A helper class to build fully-connected layers for a neural network.
@@ -64,19 +68,19 @@ class FCLayers(nn.Module):
     """
 
     def __init__(
-        self,
-        n_in: int,
-        n_out: int,
-        n_cat_list: Iterable[int] = None,
-        n_layers: int = 1,
-        n_hidden: int = 128,
-        dropout_rate: float = 0.1,
-        use_batch_norm: bool = True,
-        use_layer_norm: bool = False,
-        use_activation: bool = True,
-        bias: bool = True,
-        inject_covariates: bool = True,
-        activation_fn: nn.Module = nn.GELU,   # considering transformer 
+            self,
+            n_in: int,
+            n_out: int,
+            n_cat_list: Iterable[int] = None,
+            n_layers: int = 1,
+            n_hidden: int = 128,
+            dropout_rate: float = 0.1,
+            use_batch_norm: bool = True,
+            use_layer_norm: bool = False,
+            use_activation: bool = True,
+            bias: bool = True,
+            inject_covariates: bool = True,
+            activation_fn: nn.Module = nn.GELU,  # considering transformer 
     ):
         super().__init__()
         self.inject_covariates = inject_covariates
@@ -84,38 +88,37 @@ class FCLayers(nn.Module):
 
         if n_cat_list is not None:
             # n_cat = 1 will be ignored
-            self.n_cat_list = [n_cat if n_cat > 1 else 0 for n_cat in n_cat_list]
+            self.n_cat_list = [
+                n_cat if n_cat > 1 else 0 for n_cat in n_cat_list
+            ]
         else:
             self.n_cat_list = []
 
         cat_dim = sum(self.n_cat_list)
         self.fc_layers = nn.Sequential(
-            collections.OrderedDict(
-                [
-                    (
-                        f"Layer {i}",
-                        nn.Sequential(
-                            nn.Linear(
-                                n_in + cat_dim * self.inject_into_layer(i),
-                                n_out,
-                                bias=bias,
-                            ),
-                            # non-default params come from defaults in original Tensorflow
-                            # implementation
-                            nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
-                            if use_batch_norm
-                            else None,
-                            nn.LayerNorm(n_out, elementwise_affine=False)
-                            if use_layer_norm
-                            else None,
-                            activation_fn() if use_activation else None,
-                            nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,
+            collections.OrderedDict([
+                (
+                    f"Layer {i}",
+                    nn.Sequential(
+                        nn.Linear(
+                            n_in + cat_dim * self.inject_into_layer(i),
+                            n_out,
+                            bias=bias,
                         ),
-                    )
-                    for i, (n_in, n_out) in enumerate(zip(layers_dim[:-1], layers_dim[1:]))
-                ]
-            )
-        )
+                        # non-default params come from defaults in original Tensorflow
+                        # implementation
+                        nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001)
+                        if use_batch_norm else None,
+                        nn.LayerNorm(n_out, elementwise_affine=False)
+                        if use_layer_norm else None,
+                        activation_fn() if use_activation else None,
+                        nn.Dropout(
+                            p=dropout_rate) if dropout_rate > 0 else None,
+                    ),
+                ) for i, (
+                    n_in,
+                    n_out) in enumerate(zip(layers_dim[:-1], layers_dim[1:]))
+            ]))
 
     def inject_into_layer(self, layer_num) -> bool:
         """Helper to determine if covariates should be injected."""
@@ -150,10 +153,10 @@ class FCLayers(nn.Module):
                     self.hooks.append(b)
 
     def forward(
-        self, 
-        x: torch.Tensor, 
-        *cat_list: int, 
-        output_hidden_states: bool = False, 
+        self,
+        x: torch.Tensor,
+        *cat_list: int,
+        output_hidden_states: bool = False,
     ):
         """Forward computation on ``x``.
 
@@ -171,34 +174,42 @@ class FCLayers(nn.Module):
         :class:`torch.Tensor`
             tensor of shape ``(n_out,)`` or a tuple of tensors if ``output_hidden_states`` is ``True``
         """
-        one_hot_cat_list = []  # for generality in this list many indices useless.
+        one_hot_cat_list = [
+        ]  # for generality in this list many indices useless.
 
         if len(self.n_cat_list) > len(cat_list):
-            raise ValueError("nb. categorical args provided doesn't match init. params.")
+            raise ValueError(
+                "nb. categorical args provided doesn't match init. params.")
         for n_cat, cat in zip(self.n_cat_list, cat_list):
             if n_cat and cat is None:
-                raise ValueError("cat not provided while n_cat != 0 in init. params.")
+                raise ValueError(
+                    "cat not provided while n_cat != 0 in init. params.")
             if n_cat > 1:  # n_cat = 1 will be ignored - no additional information
                 if cat.size(1) != n_cat:
                     one_hot_cat = nn.functional.one_hot(cat.squeeze(-1), n_cat)
                 else:
                     one_hot_cat = cat  # cat has already been one_hot encoded
                 one_hot_cat_list += [one_hot_cat]
-        
-        hidden_states = {} 
+
+        hidden_states = {}
         for i, layers in enumerate(self.fc_layers):
             for layer in layers:
                 if layer is not None:
                     if isinstance(layer, nn.BatchNorm1d):
                         if x.dim() == 3:
-                            x = torch.cat([(layer(slice_x)).unsqueeze(0) for slice_x in x], dim=0)
+                            x = torch.cat([
+                                (layer(slice_x)).unsqueeze(0) for slice_x in x
+                            ],
+                                          dim=0)
                         else:
                             x = layer(x)
                     else:
-                        if isinstance(layer, nn.Linear) and self.inject_into_layer(i):
+                        if isinstance(layer,
+                                      nn.Linear) and self.inject_into_layer(i):
                             if x.dim() == 3:
                                 one_hot_cat_list_layer = [
-                                    o.unsqueeze(0).expand((x.size(0), o.size(0), o.size(1)))
+                                    o.unsqueeze(0).expand(
+                                        (x.size(0), o.size(0), o.size(1)))
                                     for o in one_hot_cat_list
                                 ]
                             else:
@@ -209,6 +220,7 @@ class FCLayers(nn.Module):
                 hidden_states[f"Layer {i}"] = x
 
         return x if not output_hidden_states else (x, hidden_states)
+
 
 class Encoder(nn.Module):
     """Encode data of ``n_input`` dimensions into a latent space of ``n_output`` dimensions.
@@ -312,6 +324,7 @@ class Encoder(nn.Module):
         if self.return_dist:
             return dist, latent
         return q_m, q_v, latent
+
 
 class DecoderSCVI(nn.Module):
     """Decodes data from latent space of ``n_input`` dimensions into ``n_output`` dimensions.
@@ -433,6 +446,7 @@ class DecoderSCVI(nn.Module):
         px_r = self.px_r_decoder(px) if dispersion == "gene-cell" else None
         return px_scale, px_r, px_rate, px_dropout
 
+
 class Embedding(nn.Embedding):
     """``EXPERIMENTAL`` Embedding layer with utility methods for extending.
 
@@ -472,12 +486,14 @@ class Embedding(nn.Embedding):
         if isinstance(init, int):
             if init <= 0:
                 raise ValueError(f"`init` must be greater than 0, got {init}")
-            weight = torch.empty((init, embedding.embedding_dim), device=embedding.weight.device)
+            weight = torch.empty((init, embedding.embedding_dim),
+                                 device=embedding.weight.device)
             nn.init.normal_(weight)
         elif isinstance(init, list):
             weight = embedding.weight[init].clone()
         else:
-            raise TypeError(f"`init` must be an `int` or a `list[int]`, got {type(init)}")
+            raise TypeError(
+                f"`init` must be an `int` or a `list[int]`, got {type(init)}")
 
         weight = torch.cat([embedding.weight.clone(), weight], dim=0)
         new_embedding = cls(
@@ -492,12 +508,12 @@ class Embedding(nn.Embedding):
         )
         if freeze_prev:
             new_embedding.weight.register_hook(
-                _partial_freeze_hook_factory(embedding.num_embeddings)
-            )
+                _partial_freeze_hook_factory(embedding.num_embeddings))
 
         return new_embedding
 
-    def _load_from_state_dict(self, state_dict: Dict[str, torch.Tensor], *args, **kwargs) -> None:
+    def _load_from_state_dict(self, state_dict: Dict[str, torch.Tensor], *args,
+                              **kwargs) -> None:
         """Load from a state dict. Overrides initialization parameters with the state dict.
 
         This is necessary because model constructors will pass in the original parameters, which
@@ -506,5 +522,6 @@ class Embedding(nn.Embedding):
         """
         key = [key for key in state_dict.keys() if "weight" in key][0]
         self.weight = nn.Parameter(state_dict[key])
-        self.num_embeddings, self.embedding_dim = self.weight.shape[0], self.weight.shape[1]
+        self.num_embeddings, self.embedding_dim = self.weight.shape[
+            0], self.weight.shape[1]
         return super()._load_from_state_dict(state_dict, *args, **kwargs)

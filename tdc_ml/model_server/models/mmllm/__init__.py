@@ -2,22 +2,22 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
-    PretrainedConfig, 
-) 
-from typing import (
-    Dict, 
-    Tuple, 
-    List, 
-    Optional, 
+    PretrainedConfig,
 )
-import torch.nn as nn 
-import warnings 
+from typing import (
+    Dict,
+    Tuple,
+    List,
+    Optional,
+)
+import torch.nn as nn
+import warnings
+
 
 def _check_modality_name(
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, 
-    special_tokens_dict: Dict[str, str | List[str]]
-) -> None:
-    """Check if the special tokens are already in the vocabulary and if they are duplicated."""    
+        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+        special_tokens_dict: Dict[str, str | List[str]]) -> None:
+    """Check if the special tokens are already in the vocabulary and if they are duplicated."""
     vocab = tokenizer.get_vocab()
     visited = set()
     for tokens in special_tokens_dict.values():
@@ -30,42 +30,44 @@ def _check_modality_name(
                 raise ValueError(f"Token {token} is duplicated.")
             visited.add(token)
 
-def _validate_added_special_tokens(
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, 
-    added_tokens: List[str]
-) -> None:
+
+def _validate_added_special_tokens(tokenizer: PreTrainedTokenizer |
+                                   PreTrainedTokenizerFast,
+                                   added_tokens: List[str]) -> None:
     """Check if the added tokens are correctly added to the tokenizer."""
     added_tokens = [token for token in set(added_tokens)]
-    new_integers = [] 
+    new_integers = []
     for token in added_tokens:
         int_list = tokenizer.encode(token, add_special_tokens=False)
         # we assume that the special token is not split into multiple tokens
-        assert len(int_list) == 1, f"Token '{token}' is encoded into multiple integers: {int_list}."
+        assert len(
+            int_list
+        ) == 1, f"Token '{token}' is encoded into multiple integers: {int_list}."
         new_integers.append(int_list[0])
         if tokenizer.decode(int_list) != token:
             warnings.warn(
                 f"For '{token}', the reconstructed token is "
-                f"'{tokenizer.decode(int_list)}'.", 
-                UserWarning 
-            )
+                f"'{tokenizer.decode(int_list)}'.", UserWarning)
 
     added_tokens = [' '.join(added_tokens), "".join(added_tokens)]
     for token in added_tokens:
-        int_list = tokenizer.encode(token, add_special_tokens=False) 
+        int_list = tokenizer.encode(token, add_special_tokens=False)
         # ensure the combination of the added tokens is split as expected
         assert int_list == new_integers, \
             f"It seems that the result ({int_list}) of encoding '{token}' is not correct. {new_integers} is expected."
 
+
 def prepare_cell_text_llm(
-    model: PreTrainedModel | nn.Module, 
-    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast, 
-    modality_tag: str = "CELL", 
-    num_signal_tokens: int = 1, 
-    ignore_index: Optional[int] = None, 
+    model: PreTrainedModel | nn.Module,
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    modality_tag: str = "CELL",
+    num_signal_tokens: int = 1,
+    ignore_index: Optional[int] = None,
     pad_token_id: Optional[int] = None,
     eos_token_id: Optional[int] = None,
-    pad_to_multiple_of: Optional[int] = None, 
-) -> Tuple[PreTrainedModel | nn.Module, PreTrainedTokenizer | PreTrainedTokenizerFast]:
+    pad_to_multiple_of: Optional[int] = None,
+) -> Tuple[PreTrainedModel | nn.Module, PreTrainedTokenizer |
+           PreTrainedTokenizerFast]:
     """
     Prepare a model and tokenizer for handling cell-language tasks.
 
@@ -137,13 +139,14 @@ def prepare_cell_text_llm(
     if not hasattr(model, "config"):
         model.config = PretrainedConfig()
     if not hasattr(model, "resize_token_embeddings"):
-        raise ValueError("The model should support resizing its token embeddings.")
-    special_tokens_dict = {} 
+        raise ValueError(
+            "The model should support resizing its token embeddings.")
+    special_tokens_dict = {}
 
     # e.g. if there is a modality called "CELL"
-    # start tag <CELL>, end tag </CELL>, placeholder <CELL0> 
+    # start tag <CELL>, end tag </CELL>, placeholder <CELL0>
     # and some signal tokens like <CELL1>, <CELL2>, <CELL3> etc are added to the tokenizer
-    # note that we make sure that the order of adding the special tokens is fixed 
+    # note that we make sure that the order of adding the special tokens is fixed
     special_tokens_dict["start_tag"] = f"<{modality_tag}>"
     special_tokens_dict["end_tag"] = f"</{modality_tag}>"
     special_tokens_dict["placeholder"] = f"<{modality_tag}0>"
@@ -152,23 +155,25 @@ def prepare_cell_text_llm(
     ]
     _check_modality_name(tokenizer, special_tokens_dict)
 
-    # we view these tokens as special tokens so they are not 
+    # we view these tokens as special tokens so they are not
     # affected by the tokenizer's normalization or splitting
     added_tokens = [
-        special_tokens_dict["start_tag"],
-        special_tokens_dict["end_tag"],
+        special_tokens_dict["start_tag"], special_tokens_dict["end_tag"],
         special_tokens_dict["placeholder"]
     ] + special_tokens_dict["signal_tokens"]
     # we don't want to replace the existing special tokens
     tokenizer.add_special_tokens(
-        {"additional_special_tokens": added_tokens}, 
-        replace_additional_special_tokens=False, 
+        {"additional_special_tokens": added_tokens},
+        replace_additional_special_tokens=False,
     )
     _validate_added_special_tokens(tokenizer, added_tokens)
-    print(f"Following {len(added_tokens)} tokens are added for modality {modality_tag}:\n{added_tokens}")
-    
-    # TO DO: placeholder tokens should be not added to the model's embedding layer 
-    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=pad_to_multiple_of)
+    print(
+        f"Following {len(added_tokens)} tokens are added for modality {modality_tag}:\n{added_tokens}"
+    )
+
+    # TO DO: placeholder tokens should be not added to the model's embedding layer
+    model.resize_token_embeddings(len(tokenizer),
+                                  pad_to_multiple_of=pad_to_multiple_of)
     model.config.special_tokens_dict = special_tokens_dict
     added_vocab = tokenizer.get_added_vocab()
     special_tokens_index_dict = {}
@@ -177,21 +182,28 @@ def prepare_cell_text_llm(
         if isinstance(tokens, str):
             special_tokens_index_dict[token_type] = added_vocab[tokens]
         else:
-            special_tokens_index_dict["first_signal_token"] = added_vocab[tokens[0]]
+            special_tokens_index_dict["first_signal_token"] = added_vocab[
+                tokens[0]]
     model.config.special_tokens_index_dict = special_tokens_index_dict
-    
+
     if pad_token_id is not None:
         model.config.pad_token_id = pad_token_id
     else:
-        assert hasattr(model.config, "pad_token_id"), "Please provide pad_token_id argument or set model.config.pad_token_id"
+        assert hasattr(
+            model.config, "pad_token_id"
+        ), "Please provide pad_token_id argument or set model.config.pad_token_id"
     if eos_token_id is not None:
         model.config.eos_token_id = eos_token_id
     else:
-        assert hasattr(model.config, "eos_token_id"), "Please provide eos_token_id argument or set model.config.eos_token_id"
+        assert hasattr(
+            model.config, "eos_token_id"
+        ), "Please provide eos_token_id argument or set model.config.eos_token_id"
     if ignore_index is not None:
         model.config.ignore_index = ignore_index
     else:
-        assert hasattr(model.config, "ignore_index"), "Please provide ignore_index argument or set model.config.ignore_index"
+        assert hasattr(
+            model.config, "ignore_index"
+        ), "Please provide ignore_index argument or set model.config.ignore_index"
     model.config.num_signal_tokens = num_signal_tokens
 
-    return model, tokenizer 
+    return model, tokenizer

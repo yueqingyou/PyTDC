@@ -1,22 +1,23 @@
-import torch 
+import torch
 from torch.distributions import (
-    Distribution, 
-    Normal, 
+    Distribution,
+    Normal,
 )
 from torch.nn.functional import one_hot
-import numpy as np 
+import numpy as np
 from typing import (
-    Literal, 
-    Callable, 
+    Literal,
+    Callable,
     Dict,
-    List, 
-    Tuple, 
-) 
+    List,
+    Tuple,
+)
 from .base import (
-    EmbeddingModuleMixin, 
-    BaseModuleClass, 
-    LossOutput, 
-) 
+    EmbeddingModuleMixin,
+    BaseModuleClass,
+    LossOutput,
+)
+
 
 class CVAE(EmbeddingModuleMixin, BaseModuleClass):
     """
@@ -136,7 +137,8 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
         n_continuous_cov: int = 0,
         n_cats_per_cov: List[int] | None = None,
         dropout_rate: float = 0.1,
-        dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
+        dispersion: Literal["gene", "gene-batch", "gene-label",
+                            "gene-cell"] = "gene",
         log_variational: bool = True,
         gene_likelihood: Literal["zinb", "nb", "poisson"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
@@ -153,7 +155,7 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
         extra_encoder_kwargs: dict | None = None,
         extra_decoder_kwargs: dict | None = None,
         batch_embedding_kwargs: dict | None = None,
-        adaptive_library: bool = True, 
+        adaptive_library: bool = True,
     ) -> "CVAE":
         from scvi.nn import DecoderSCVI, Encoder
 
@@ -174,11 +176,12 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             if library_log_means is None or library_log_vars is None:
                 raise ValueError(
                     "If not using observed_lib_size, "
-                    "must provide library_log_means and library_log_vars."
-                )
+                    "must provide library_log_means and library_log_vars.")
 
-            self.register_buffer("library_log_means", torch.from_numpy(library_log_means).float())
-            self.register_buffer("library_log_vars", torch.from_numpy(library_log_vars).float())
+            self.register_buffer("library_log_means",
+                                 torch.from_numpy(library_log_means).float())
+            self.register_buffer("library_log_vars",
+                                 torch.from_numpy(library_log_vars).float())
 
         if self.dispersion == "gene":
             self.px_r = torch.nn.Parameter(torch.randn(n_input))
@@ -195,10 +198,12 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
 
         self.batch_representation = batch_representation
         if self.batch_representation == "embedding":
-            self.init_embedding('batch_ids', n_batch, **(batch_embedding_kwargs or {}))
+            self.init_embedding('batch_ids', n_batch,
+                                **(batch_embedding_kwargs or {}))
             batch_dim = self.get_embedding('batch_ids').embedding_dim
         elif self.batch_representation != "one-hot":
-            raise ValueError("`batch_representation` must be one of 'one-hot', 'embedding'.")
+            raise ValueError(
+                "`batch_representation` must be one of 'one-hot', 'embedding'.")
 
         use_batch_norm_encoder = use_batch_norm == "encoder" or use_batch_norm == "both"
         use_batch_norm_decoder = use_batch_norm == "decoder" or use_batch_norm == "both"
@@ -210,7 +215,9 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             n_input_encoder += batch_dim * encode_covariates
             cat_list = list([] if n_cats_per_cov is None else n_cats_per_cov)
         else:
-            cat_list = [n_batch] + list([] if n_cats_per_cov is None else n_cats_per_cov)
+            cat_list = [
+                n_batch
+            ] + list([] if n_cats_per_cov is None else n_cats_per_cov)
 
         encoder_cat_list = cat_list if encode_covariates else None
         _extra_encoder_kwargs = extra_encoder_kwargs or {}
@@ -264,17 +271,16 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
 
         # make the library size adaptively
         self.adaptive_library = adaptive_library
-        self.library_decoder = lambda x: x 
+        self.library_decoder = lambda x: x
         if encode_covariates and adaptive_library:
             assert n_continuous_cov > 0, "The number of continuous covariates should be greater than 0" + \
                 "so the model can adaptively decode the library size"
             n_input_library_decoder = 1 + n_continuous_cov
             self.library_decoder = torch.nn.Sequential(
-                torch.nn.Linear(n_input_library_decoder, n_input_library_decoder // 2), 
-                torch.nn.GELU(),
+                torch.nn.Linear(n_input_library_decoder,
+                                n_input_library_decoder // 2), torch.nn.GELU(),
                 torch.nn.Dropout(dropout_rate),
-                torch.nn.Linear(n_input_library_decoder // 2, 1)
-            )
+                torch.nn.Linear(n_input_library_decoder // 2, 1))
         else:
             self.adaptive_library = False
 
@@ -326,12 +332,12 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
 
         n_batch = self.library_log_means.shape[1]
         local_library_log_means = linear(
-            one_hot(batch_index.squeeze(-1), n_batch).float(), self.library_log_means
-        )
+            one_hot(batch_index.squeeze(-1), n_batch).float(),
+            self.library_log_means)
 
         local_library_log_vars = linear(
-            one_hot(batch_index.squeeze(-1), n_batch).float(), self.library_log_vars
-        )
+            one_hot(batch_index.squeeze(-1), n_batch).float(),
+            self.library_log_vars)
 
         return local_library_log_means, local_library_log_vars
 
@@ -358,7 +364,7 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             categorical_input = torch.split(cat_covs, 1, dim=1)
         else:
             categorical_input = ()
-        
+
         if self.batch_representation == "embedding" and self.encode_covariates:
             batch_rep = self.compute_embedding('batch_ids', batch_ids)
             encoder_input = torch.cat([encoder_input, batch_rep], dim=-1)
@@ -369,11 +375,11 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
         ql = None
         if not self.use_observed_lib_size:
             if self.batch_representation == "embedding":
-                ql, library_encoded = self.l_encoder(encoder_input, *categorical_input)
+                ql, library_encoded = self.l_encoder(encoder_input,
+                                                     *categorical_input)
             else:
-                ql, library_encoded = self.l_encoder(
-                    encoder_input, batch_ids, *categorical_input
-                )
+                ql, library_encoded = self.l_encoder(encoder_input, batch_ids,
+                                                     *categorical_input)
             library = library_encoded
 
         if n_samples > 1:
@@ -381,16 +387,17 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             z = self.z_encoder.z_transformation(untran_z)
             if self.use_observed_lib_size:
                 library = library.unsqueeze(0).expand(
-                    (n_samples, library.size(0), library.size(1))
-                )
+                    (n_samples, library.size(0), library.size(1)))
             else:
                 library = ql.sample((n_samples,))
 
         return {
-            'z': z,                                 # the latent variable z sampled from the posterior distribution
-            'q_z': qz,                              # the posterior distribution of the latent variable z
-            'q_library': ql,                        # the posterior distribution of the library size
-            'library': library,                     # the library size sampled from the posterior distribution
+            'z':
+                z,  # the latent variable z sampled from the posterior distribution
+            'q_z': qz,  # the posterior distribution of the latent variable z
+            'q_library': ql,  # the posterior distribution of the library size
+            'library':
+                library,  # the library size sampled from the posterior distribution
         }
 
     def generative(
@@ -415,8 +422,7 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             decoder_input = z
         elif z.dim() != cont_covs.dim():
             decoder_input = torch.cat(
-                [z, cont_covs.unsqueeze(0).expand(z.size(0), -1, -1)], dim=-1
-            )
+                [z, cont_covs.unsqueeze(0).expand(z.size(0), -1, -1)], dim=-1)
         else:
             # for generative process, cont_covs is concatenated to z
             decoder_input = torch.cat([z, cont_covs], dim=-1)
@@ -433,7 +439,8 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
             # MODIFIED: adjust the size_factor based on the conditional information adaptively
             size_factor = library
             if self.adaptive_library and cont_covs is not None:
-                size_factor = self.library_decoder(torch.cat([size_factor, cont_covs], dim=-1))
+                size_factor = self.library_decoder(
+                    torch.cat([size_factor, cont_covs], dim=-1))
 
         if self.batch_representation == "embedding":
             batch_rep = self.compute_embedding('batch_ids', batch_ids)
@@ -443,7 +450,7 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
                 decoder_input,
                 size_factor,
                 *categorical_input,
-                y, 
+                y,
             )
         else:
             px_scale, px_r, px_rate, px_dropout = self.decoder(
@@ -452,15 +459,16 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
                 size_factor,
                 batch_ids,
                 *categorical_input,
-                y, 
+                y,
             )
 
         if self.dispersion == "gene-label":
             px_r = linear(
-                one_hot(y.squeeze(-1), self.n_labels).float(), self.px_r
-            )  # px_r gets transposed - last dimension is nb genes
+                one_hot(y.squeeze(-1), self.n_labels).float(),
+                self.px_r)  # px_r gets transposed - last dimension is nb genes
         elif self.dispersion == "gene-batch":
-            px_r = linear(one_hot(batch_ids.squeeze(-1), self.n_batch).float(), self.px_r)
+            px_r = linear(
+                one_hot(batch_ids.squeeze(-1), self.n_batch).float(), self.px_r)
         elif self.dispersion == "gene":
             px_r = self.px_r
 
@@ -483,12 +491,15 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
         return {
-            'p_gene': px,       # the distribution of the gene expression for each cell 
-            'p_library': pl,    # the distribution of the library size for each cell
-            'p_z': pz,          # the prior distribution of the latent variable z
+            'p_gene':
+                px,  # the distribution of the gene expression for each cell 
+            'p_library':
+                pl,  # the distribution of the library size for each cell
+            'p_z': pz,  # the prior distribution of the latent variable z
         }
 
-    def get_prior_library_distribution(self, batch_ids: torch.Tensor) -> Distribution:
+    def get_prior_library_distribution(self,
+                                       batch_ids: torch.Tensor) -> Distribution:
         """Get the prior distribution of the library size."""
         if self.use_observed_lib_size:
             return None
@@ -498,7 +509,8 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
                 local_library_log_vars,
             ) = self._compute_local_library_params(batch_ids)
 
-            return Normal(local_library_log_means, local_library_log_vars.sqrt())
+            return Normal(local_library_log_means,
+                          local_library_log_vars.sqrt())
 
     def loss(
         self,
@@ -511,13 +523,12 @@ class CVAE(EmbeddingModuleMixin, BaseModuleClass):
         from torch.distributions import kl_divergence
 
         x = tensors['gene_counts']
-        kl_divergence_z = kl_divergence(
-            inference_outputs['q_z'], generative_outputs['p_z']
-        ).sum(dim=-1)
+        kl_divergence_z = kl_divergence(inference_outputs['q_z'],
+                                        generative_outputs['p_z']).sum(dim=-1)
         if not self.use_observed_lib_size:
             kl_divergence_l = kl_divergence(
-                inference_outputs['q_library'], generative_outputs['p_library']
-            ).sum(dim=1)
+                inference_outputs['q_library'],
+                generative_outputs['p_library']).sum(dim=1)
         else:
             kl_divergence_l = torch.tensor(0.0, device=x.device)
 

@@ -1,21 +1,22 @@
-import argparse 
-import pandas as pd 
-import numpy as np 
+import argparse
+import pandas as pd
+import numpy as np
 from dataclasses import dataclass
 from typing import (
-    Iterable, 
-    List, 
-    Optional, 
-    Dict, 
-    Any, 
-) 
+    Iterable,
+    List,
+    Optional,
+    Dict,
+    Any,
+)
 from scipy.sparse import lil_matrix
-from collections import defaultdict 
-import anndata 
-import json 
+from collections import defaultdict
+import anndata
+import json
 from importlib.util import find_spec
-import os 
-import warnings 
+import os
+import warnings
+
 
 @dataclass(frozen=True)
 class Template:
@@ -24,20 +25,22 @@ class Template:
     input: str
     output: Optional[str] = None
 
+
 def str2bool(v: str) -> bool:
     """Convert a string to a boolean value."""
     if isinstance(v, bool):
-       return v
+        return v
     if v.lower() in ("yes", "true", 't', 'y', '1'):
         return True
     elif v.lower() in ("no", "false", 'f', 'n', '0'):
         return False
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
-    
+
+
 def read_templates(
-    template_dir_name: Optional[str] = None,  
-    task_type: Optional[str] = None,  
+    template_dir_name: Optional[str] = None,
+    task_type: Optional[str] = None,
 ) -> Dict[str, List[Template]]:
     """
     Read templates from a directory, structured by task type, and return a dict of template sets.
@@ -66,16 +69,15 @@ def read_templates(
     """
     if template_dir_name is None:
         warnings.warn(
-            "No template directory is provided. Use the current directory.", 
-            UserWarning
-        )
+            "No template directory is provided. Use the current directory.",
+            UserWarning)
         template_dir_name = '.'
     template_set = defaultdict(list)
     have_invalid_template = False
 
     for sub_dir in os.listdir(template_dir_name):
         if task_type is not None and sub_dir != task_type:
-            continue 
+            continue
         path = os.path.join(template_dir_name, sub_dir)
         if os.path.isdir(path):
             template_file_name = os.path.join(path, "templates.json")
@@ -92,14 +94,14 @@ def read_templates(
     if have_invalid_template:
         warnings.warn(
             "Some templates are invalid. Please ensure that all templates have 'instruction' and 'response' keys. "
-            "Those invalid templates will be replaced with the default template, namely '{input}' and '{output}'.", 
-            UserWarning
-        )
+            "Those invalid templates will be replaced with the default template, namely '{input}' and '{output}'.",
+            UserWarning)
     return template_set
+
 
 def find_duplicates_uppercase(inputs: Iterable[str]) -> List[bool]:
     """Find duplicates in the input list after converting all elements to uppercase."""
-    visited = set() 
+    visited = set()
     res = []
 
     for x in inputs:
@@ -109,13 +111,14 @@ def find_duplicates_uppercase(inputs: Iterable[str]) -> List[bool]:
         else:
             res.append(True)
             visited.add(x_)
-    
+
     return res
 
+
 def unify_gene_features(
-    adata: anndata.AnnData, 
-    gene_features: Iterable[str], 
-    force_gene_symbol_uppercase: bool = True, 
+    adata: anndata.AnnData,
+    gene_features: Iterable[str],
+    force_gene_symbol_uppercase: bool = True,
 ) -> anndata.AnnData:
     """
     Unify the gene features of the AnnData object to match the provided gene features.
@@ -163,7 +166,7 @@ def unify_gene_features(
     >>> new_adata.obs.to_dict()
     {'state': {'CellA': 'normal', 'CellB': 'cancer'}}
     """
-    # drop duplicates 
+    # drop duplicates
     # TO DO: consider gene copies with different esmbl ids
     if force_gene_symbol_uppercase:
         adata = adata[:, find_duplicates_uppercase(adata.var_names)].copy()
@@ -171,34 +174,37 @@ def unify_gene_features(
         if len(set(gene_features)) != len(gene_features):
             raise ValueError("Duplicates occur when gene symbols are capitalized. " + \
                               "To avert it, please remove duplicates in the gene features or set 'force_gene_symbol_uppercase' to False")
-    
+
     new_var_names = pd.Index(gene_features)
     # lil_matrix is efficient for constructing sparse matrices incrementally
-    new_X = lil_matrix((len(adata), len(new_var_names)))   
-    
+    new_X = lil_matrix((len(adata), len(new_var_names)))
+
     # drop genes that are not in the gene vocabulary and order the genes
     var_features = {
-        gene.upper() if force_gene_symbol_uppercase else gene: i for i, gene in enumerate(adata.var_names)
+        gene.upper() if force_gene_symbol_uppercase else gene: i
+        for i, gene in enumerate(adata.var_names)
     }
     gene_features = np.array(gene_features)
     indexer = np.arange(len(gene_features))
-    src_indexer = indexer[np.vectorize(lambda x: gene_features[x] in var_features)(indexer)]
-    tgt_indexer = np.vectorize(lambda x: var_features[x])(gene_features[src_indexer])
+    src_indexer = indexer[np.vectorize(
+        lambda x: gene_features[x] in var_features)(indexer)]
+    tgt_indexer = np.vectorize(lambda x: var_features[x])(
+        gene_features[src_indexer])
     new_X[:, src_indexer] = adata.X[:, tgt_indexer]
-    
+
     # convert the lil_matrix to csr_matrix
     # we don't change the metadata of the AnnData object
-    return anndata.AnnData(
-        X=new_X.tocsr(), 
-        obs=adata.obs, 
-        var=pd.DataFrame(index=new_var_names)
-    ) 
+    return anndata.AnnData(X=new_X.tocsr(),
+                           obs=adata.obs,
+                           var=pd.DataFrame(index=new_var_names))
 
-def set_global_random_seed(seed: int, libraries: Optional[Iterable[str]] = None) -> None:
+
+def set_global_random_seed(seed: int,
+                           libraries: Optional[Iterable[str]] = None) -> None:
     """Set the global random seed for reproducibility."""
     if libraries is None:
         libraries = ["numpy", "torch", "random"]
-    
+
     for lib in libraries:
         if lib == "numpy":
             if find_spec("numpy") is not None:
@@ -216,9 +222,11 @@ def set_global_random_seed(seed: int, libraries: Optional[Iterable[str]] = None)
             import random
             random.seed(seed)
         else:
-            raise ValueError(f"Library {lib} is not supported for setting the global seed.")
-    
-    return 
+            raise ValueError(
+                f"Library {lib} is not supported for setting the global seed.")
+
+    return
+
 
 def parse_parameters(parameters: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Parse the model parameters."""
@@ -226,6 +234,6 @@ def parse_parameters(parameters: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     for key, value in parameters.items():
         name, sub_key = key.split("::", 1)
         if name not in model_parameters:
-            model_parameters[name] = {} 
+            model_parameters[name] = {}
         model_parameters[name][sub_key] = value
     return model_parameters
