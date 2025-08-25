@@ -120,7 +120,7 @@ class TestModelServer(unittest.TestCase):
         print(f"VCGPT loaded successfully")
         # data
         from tdc_ml.multi_pred.anndata_dataset import DataLoader
-        from ..utils.load import download_wrapper, pd_load
+        from tdc_ml.utils.load import download_wrapper, pd_load
         adata = DataLoader("vcgpt_sensitivity_demo",
                            "./data",
                            dataset_names=["vcgpt_sensitivity_demo"],
