@@ -9,8 +9,9 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import sys
 
+from .anndata_dataset import DataLoader
+from ..metadata import dataset_names
 from ..utils import print_sys
-from .single_cell import CellXGeneTemplate
 from ..dataset_configs.config_map import scperturb_gene_datasets
 
 
@@ -96,10 +97,11 @@ def get_DE_genes(adata):
     return adata
 
 
-class PerturbOutcome(CellXGeneTemplate):
+class PerturbOutcome(DataLoader):
 
-    def __init__(self, name, path="./data", print_stats=False):
-        super().__init__(name, path, print_stats)
+    def __init__(self, name, path="./data", print_stats=False, dsn=None):
+        dsn = dataset_names["CellXGene"] if dsn is None else dsn
+        super().__init__(name, path, print_stats, dsn)
         if name in scperturb_gene_datasets:
             self.is_gene = True
         else:

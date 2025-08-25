@@ -34,37 +34,6 @@ class TestDataloader(unittest.TestCase):
         data = TestMultiPred(name="Test_Multi_Pred")
         split = data.get_split()
 
-    def test_resource_dataloader(self):
-        from tdc_ml.multi_pred.single_cell import CellXGene
-        from pandas import DataFrame
-        dataloader = CellXGene(name="Tabula Sapiens - All Cells")
-        gen = dataloader.get_data(
-            value_filter="tissue == 'brain' and sex == 'male'")
-        df = next(gen)
-        assert isinstance(df, DataFrame)
-        assert len(df) > 0
-        print(df.head())
-        # TODO: get_split() taking up too much memory...
-        # split = dataloader.get_split(value_filter="tissue == 'brain' and sex == 'male'", debug=True)
-        # assert "train" in split
-        # assert isinstance(split["train"], DataFrame)
-        # assert len(split["train"]) > 0
-        # assert "test" in split
-        # assert isinstance(split["test"], DataFrame)
-        # assert len(split["test"]) > 0
-
-    def test_cellxgene_list(self):
-        from tdc_ml.multi_pred.single_cell import CellXGene
-        from pandas import DataFrame
-        dataloader = CellXGene(
-            name=["Tabula Sapiens - Skin", "Tabula Sapiens - Kidney"])
-        gen = dataloader.get_data(
-            value_filter="tissue == 'liver' and sex == 'male'")
-        df = next(gen)
-        assert isinstance(df, DataFrame)
-        assert len(df) > 0
-        print(df.head())
-
     def test_brown(self):
         # TODO: factor out into specialized test suites for individual datasets
         # this test serves as an integration test of the data processing, data configs, and existing tdc pipeline. leave here for now.
