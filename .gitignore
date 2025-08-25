@@ -141,3 +141,5 @@ oracle/
 
 # vim backup
 *~
+
+scvi_model/
