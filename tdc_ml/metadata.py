@@ -961,6 +961,8 @@ name2type = {
     "scvi_test_dataset": "h5ad",
     "vcgpt_sensitivity_demo": "h5ad",
     "vcgpt_gene_vocab": "npy",
+    "vcgpt_instructcell_generation_demo": "h5ad",
+    "vcgpt_instructcell_annotation_demo": "h5ad",
 }
 
 name2id = {
@@ -1172,6 +1174,8 @@ name2id = {
     "scvi_test_dataset": 10872157,
     "vcgpt_sensitivity_demo": 12012482,
     "vcgpt_gene_vocab": 12012483,
+    "vcgpt_instructcell_generation_demo": 12014268,
+    "vcgpt_instructcell_annotation_demo": 12014269,
 }
 
 oracle2type = {

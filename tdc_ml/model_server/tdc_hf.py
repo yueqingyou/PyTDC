@@ -71,10 +71,12 @@ class tdc_hf_interface:
             model = scVI()
             model.load()
             return model
-        elif self.model_name == "VCGPT":
+        elif self.model_name == "VCGPT-instruct" or self.model_name == "InstructCell-instruct":
             from .models.mmllm.module import InstructCell
             model = InstructCell.from_pretrained("zjunlp/InstructCell-instruct")
             return model
+        elif self.model_name == "VCGPT":
+            raise Exception("VCGPT is not released yet! It you're interested in the single-cell LLM, please check VCGPT-instruct.")
         raise Exception("Not implemented yet!")
 
     def load_deeppurpose(self, save_path):
