@@ -1,6 +1,5 @@
 accelerate==0.33.0
-dataclasses>=0.6,<1.0
-datasets<2.20.0
+datasets>=4.4.0
 evaluate==0.4.2
 fuzzywuzzy>=0.18.0,<1.0
 huggingface_hub>=0.34.4,<1.0
@@ -10,7 +9,7 @@ pandas>=2.2.2,<3.0.0
 requests>=2.31.0,<3.0.0
 scikit-learn>=1.2.2
 tqdm>=4.65.0,<5.0.0
-transformers>=4.43.0,<4.51.0
+transformers>=4.57.0
 gget>=0.28.4,<1.0.0
 pydantic>=2.6.3,<3.0.0
 rdkit>=2023.9.5,<2024.3.1
